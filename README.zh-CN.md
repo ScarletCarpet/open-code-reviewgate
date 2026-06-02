@@ -347,6 +347,10 @@ ocr config set telemetry.otlp_endpoint localhost:4317
 
 参见 [CONTRIBUTING.zh-CN.md](CONTRIBUTING.zh-CN.md) 了解开发环境搭建、编码规范以及如何提交 Pull Request。
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=alibaba/open-code-review&type=Date)](https://star-history.com/#alibaba/open-code-review&Date)
+
 ## 许可证
 
 [Apache-2.0](LICENSE) — Copyright 2026 Alibaba

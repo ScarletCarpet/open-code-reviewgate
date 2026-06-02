@@ -347,6 +347,10 @@ Set `telemetry.content_logging` to include LLM prompts and responses in exported
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, coding guidelines, and how to submit pull requests.
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=alibaba/open-code-review&type=Date)](https://star-history.com/#alibaba/open-code-review&Date)
+
 ## License
 
 [Apache-2.0](LICENSE) — Copyright 2026 Alibaba
