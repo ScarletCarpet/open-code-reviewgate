@@ -653,12 +653,17 @@ func buildToolInputSchema(params map[string]any) anthropic.ToolInputSchemaParam 
 // mapAnthropicResponse converts the SDK response into ChatResponse.
 func (c *AnthropicClient) mapAnthropicResponse(sdkResp *anthropic.Message) *ChatResponse {
 	var textParts []string
+	var thinkingParts []string
 	var toolCalls []ToolCall
 
 	for _, block := range sdkResp.Content {
 		switch block.Type {
 		case "text":
 			textParts = append(textParts, block.Text)
+		case "thinking":
+			if block.Thinking != "" {
+				thinkingParts = append(thinkingParts, block.Thinking)
+			}
 		case "tool_use":
 			toolCalls = append(toolCalls, ToolCall{
 				ID:   block.ID,
@@ -675,6 +680,11 @@ func (c *AnthropicClient) mapAnthropicResponse(sdkResp *anthropic.Message) *Chat
 	if len(textParts) > 0 {
 		s := strings.Join(textParts, "\n")
 		contentStr = &s
+	}
+
+	var reasoningContent string
+	if len(thinkingParts) > 0 {
+		reasoningContent = strings.Join(thinkingParts, "\n")
 	}
 
 	finishReason := string(sdkResp.StopReason)
@@ -701,9 +711,10 @@ func (c *AnthropicClient) mapAnthropicResponse(sdkResp *anthropic.Message) *Chat
 		Model: string(sdkResp.Model),
 		Choices: []Choice{{
 			Message: ResponseMessage{
-				Role:      "assistant",
-				Content:   contentStr,
-				ToolCalls: toolCalls,
+				Role:             "assistant",
+				Content:          contentStr,
+				ReasoningContent: reasoningContent,
+				ToolCalls:        toolCalls,
 			},
 			FinishReason: finishReason,
 		}},
