@@ -404,6 +404,15 @@ ocr review \
 
 `--format json` 参数输出适合 CI 脚本解析的机器可读结果。
 
+JSON 输出中的每条评审结果可包含两个可选的结构化字段，便于 CI 集成在无需解析评论文本的情况下排序、分组或卡点构建：
+
+| 字段 | 允许的取值 | 说明 |
+|------|-----------|------|
+| `severity` | `high`、`medium`、`low` | 标识问题的严重程度。 |
+| `category` | `bug`、`security`、`performance`、`maintainability`、`test`、`style`、`documentation`、`improvement`、`other` | 标识问题的类别。 |
+
+这两个字段均为可选，仅在模型填充时才会输出，因此忽略它们的现有消费方不受影响（字段为空时会被完全省略）。
+
 集成示例请参见 [`examples/`](./examples/) 目录：
 
 - [`github_actions/`](./examples/github_actions/) — GitHub Actions 集成示例
@@ -446,6 +455,10 @@ ocr review \
 | `--max-tools` | — | 内置默认 | 每个文件的最大工具调用轮次；仅在大于模板默认值时生效 |
 | `--max-git-procs` | — | 内置默认 | 最大并发 git 子进程数 |
 | `--tools` | — | — | 自定义 JSON 工具配置路径 |
+| `--level` | — | 全部 | 以逗号分隔的要包含的严重级别（例如 `--level high,medium`） |
+| `--category` | — | 全部 | 以逗号分隔的要包含的分类（例如 `--category bug,security`） |
+
+设置 `--level` 或 `--category` 后，仅显示归一化后的严重级别或分类匹配给定值的问题。两者组合使用时为逻辑与（AND）关系。过滤在 LLM 完成后客户端执行，因此不会降低 API 费用——仅控制输出的内容。
 
 ### `ocr scan` 参数
 
@@ -465,6 +478,8 @@ ocr review \
 | `--concurrency` | — | `8` | 最大并发文件扫描数 |
 | `--rule` | — | — | 自定义 JSON 审查规则路径 |
 | `--repo` | — | 当前目录 | 要扫描的仓库或目录根路径 |
+| `--level` | — | 全部 | 以逗号分隔的要包含的严重级别（例如 `--level high,medium`） |
+| `--category` | — | 全部 | 以逗号分隔的要包含的分类（例如 `--category bug,security`） |
 
 每次运行前，`ocr scan` 会打印粗略的 token 费用估算。使用 `--preview` 先查看文件列表，使用 `--max-tokens-budget` 限制大型仓库的开销。
 
@@ -520,6 +535,10 @@ ocr scan --repo /path/to/plain/dir --format json
 
 # 最快扫描：跳过规划、去重和项目总结
 ocr scan --no-plan --no-dedup --no-summary
+
+# 过滤输出，只显示高和中严重级别的问题
+ocr review --level high,medium --category bug
+ocr scan --level high,medium --category bug
 
 # 在浏览器中查看审查会话历史
 ocr viewer

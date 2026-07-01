@@ -51,9 +51,19 @@
                 "suggestion_code": {
                   "type": "string",
                   "description": "Corresponding suggested code snippet, maintaining consistent code style."
+                },
+                "severity": {
+                  "type": "string",
+                  "description": "Issue severity. One of: high, medium, low."
+                },
+                "category": {
+                  "type": "string",
+                  "description": "Issue category. One of: bug, security, performance, maintainability, improvement, style, documentation, other."
                 }
               },
               "required": [
+                "severity",
+                "category",
                 "content",
                 "existing_code"
               ]

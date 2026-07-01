@@ -406,6 +406,17 @@ The `--from` flag accepts a branch ref (e.g., `origin/main`) or commit SHA as th
 
 The `--format json` flag outputs machine-readable results suitable for parsing in CI scripts.
 
+Each finding in the JSON output may include two optional structured fields so CI
+integrations can sort, group, or gate builds without re-parsing comment text:
+
+| Field | Allowed values | Notes |
+|-------|----------------|-------|
+| `severity` | `high`, `medium`, `low` | Indicates the importance of the issue. |
+| `category` | `bug`, `security`, `performance`, `maintainability`, `improvement`, `style`, `documentation`, `other` | Classifies the kind of issue. |
+
+Both fields are optional and emitted only when the model populates them, so existing
+consumers that ignore them are unaffected (the keys are omitted entirely when empty).
+
 See the [`examples/`](./examples/) directory for integration examples:
 
 - [`github_actions/`](./examples/github_actions/) — GitHub Actions integration example
@@ -448,6 +459,10 @@ See the [`examples/`](./examples/) directory for integration examples:
 | `--max-tools` | — | built-in | Max tool call rounds per file; only takes effect when greater than template default |
 | `--max-git-procs` | — | built-in | Max concurrent git subprocesses |
 | `--tools` | — | — | Path to custom JSON tools config |
+| `--level` | — | all | Comma-separated severity levels to include. (e.g. `--level high,medium`) |
+| `--category` | — | all | Comma-separated categories to include. (e.g. `--category bug,security`) |
+
+When `--level` or `--category` is set, only findings whose normalized severity or category match one of the given values are shown. Combining both filters acts as a logical AND. Filtering is applied client-side (after the LLM finishes), so it does not reduce API cost — it only controls what appears in the output.
 
 ### `ocr scan` Flags
 
@@ -469,6 +484,8 @@ non-git directories too (it falls back to a filesystem walk that honors `.gitign
 | `--concurrency` | — | `8` | Max concurrent file scans |
 | `--rule` | — | — | Path to custom JSON review rules |
 | `--repo` | — | current dir | Repository or directory root to scan |
+| `--level` | — | all | Comma-separated severity levels to include. (e.g. `--level high,medium`) |
+| `--category` | — | all | Comma-separated categories to include. (e.g. `--category bug,security`) |
 
 Before each run, `ocr scan` prints a rough token-cost estimate. Use `--preview` to see the
 file list first, and `--max-tokens-budget` to cap spend on large repositories.
@@ -525,6 +542,10 @@ ocr scan --repo /path/to/plain/dir --format json
 
 # Fastest scan: skip planning, dedup, and the project summary
 ocr scan --no-plan --no-dedup --no-summary
+
+# Filter output to show only high and medium severity findings
+ocr review --level high,medium --category bug
+ocr scan --level high,medium --category bug
 
 # View review session history in browser
 ocr viewer

@@ -9,6 +9,8 @@ type LlmComment struct {
 	StartLine      int    `json:"start_line"`
 	EndLine        int    `json:"end_line"`
 	Thinking       string `json:"thinking,omitempty"`
+	Category       string `json:"category,omitempty"`
+	Severity       string `json:"severity,omitempty"`
 }
 
 // CodeReviewResult holds raw LLM-generated review suggestion for a code segment.

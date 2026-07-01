@@ -238,6 +238,9 @@ type ResultProvider interface {
 // stdout early for agent-text audiences so the summary is visible, prints
 // the trace summary, and writes the result in the requested format.
 //
+// fc is an optional filter config from --level/--category CLI flags; pass nil
+// to include all comments (equivalent to no filters).
+//
 // q is the silencing handle returned by newQuietHandle; pass nil if no
 // silencing was set up (in which case the early restore is a no-op).
 func emitRunResult(
@@ -247,16 +250,21 @@ func emitRunResult(
 	startTime time.Time,
 	outputFormat, audience string,
 	q *quietHandle,
+	fc *filterConfig,
 ) error {
 	comments = diff.ResolveLineNumbers(comments, ag.Diffs())
+	totalBeforeFilter := len(comments)
+	comments = filterComments(comments, fc)
+	totalAfterFilter := len(comments)
+	sortComments(comments)
 
 	duration := time.Since(startTime)
 	telemetry.RecordReviewDuration(ctx, duration)
-	if len(comments) > 0 {
-		telemetry.RecordCommentsGenerated(ctx, int64(len(comments)))
+	if totalAfterFilter > 0 {
+		telemetry.RecordCommentsGenerated(ctx, int64(totalAfterFilter))
 	}
 
-	if outputFormat == "json" && len(comments) == 0 && ag.FilesReviewed() == 0 {
+	if outputFormat == "json" && totalAfterFilter == 0 && ag.FilesReviewed() == 0 {
 		return outputJSONNoFiles()
 	}
 
@@ -267,7 +275,7 @@ func emitRunResult(
 	}
 
 	if outputFormat != "json" {
-		telemetry.PrintTraceSummary(ag.FilesReviewed(), int64(len(comments)),
+		telemetry.PrintTraceSummary(ag.FilesReviewed(), int64(totalBeforeFilter), int64(totalAfterFilter),
 			ag.TotalInputTokens(), ag.TotalOutputTokens(), ag.TotalTokensUsed(),
 			ag.TotalCacheReadTokens(), ag.TotalCacheWriteTokens(), duration)
 	}
@@ -276,7 +284,7 @@ func emitRunResult(
 		return outputJSONWithWarnings(comments, ag.Warnings(), ag.FilesReviewed(),
 			ag.TotalInputTokens(), ag.TotalOutputTokens(), ag.TotalTokensUsed(),
 			ag.TotalCacheReadTokens(), ag.TotalCacheWriteTokens(), duration,
-			ag.ProjectSummary(), ag.ToolCalls())
+			ag.ProjectSummary(), ag.ToolCalls(), totalBeforeFilter, totalAfterFilter)
 	}
 	outputTextWithWarnings(comments, ag.Warnings())
 	if summary := ag.ProjectSummary(); summary != "" {

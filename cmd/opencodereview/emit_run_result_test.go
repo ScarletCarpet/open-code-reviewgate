@@ -38,7 +38,7 @@ func (m *mockResultProvider) ToolCalls() map[string]int64    { return m.toolCall
 func TestEmitRunResult_JSONNoFiles(t *testing.T) {
 	ag := &mockResultProvider{filesReviewed: 0}
 	got := captureStdout(t, func() {
-		err := emitRunResult(context.Background(), ag, nil, time.Now(), "json", "developer", nil)
+		err := emitRunResult(context.Background(), ag, nil, time.Now(), "json", "developer", nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -63,7 +63,7 @@ func TestEmitRunResult_JSONWithComments(t *testing.T) {
 	}
 	comments := []model.LlmComment{{Path: "main.go", Content: "fix", StartLine: 1, EndLine: 2}}
 	got := captureStdout(t, func() {
-		err := emitRunResult(context.Background(), ag, comments, time.Now(), "json", "developer", nil)
+		err := emitRunResult(context.Background(), ag, comments, time.Now(), "json", "developer", nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -83,7 +83,7 @@ func TestEmitRunResult_JSONWithComments(t *testing.T) {
 func TestEmitRunResult_TextNoComments(t *testing.T) {
 	ag := &mockResultProvider{filesReviewed: 2}
 	got := captureStdout(t, func() {
-		err := emitRunResult(context.Background(), ag, nil, time.Now(), "text", "developer", nil)
+		err := emitRunResult(context.Background(), ag, nil, time.Now(), "text", "developer", nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -97,7 +97,7 @@ func TestEmitRunResult_TextWithComments(t *testing.T) {
 	ag := &mockResultProvider{filesReviewed: 1}
 	comments := []model.LlmComment{{Path: "a.go", Content: "rename", StartLine: 5, EndLine: 10}}
 	got := captureStdout(t, func() {
-		err := emitRunResult(context.Background(), ag, comments, time.Now(), "text", "developer", nil)
+		err := emitRunResult(context.Background(), ag, comments, time.Now(), "text", "developer", nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -116,7 +116,7 @@ func TestEmitRunResult_TextWithProjectSummary(t *testing.T) {
 		projectSummary: "All tests pass, code quality is good.",
 	}
 	got := captureStdout(t, func() {
-		err := emitRunResult(context.Background(), ag, nil, time.Now(), "text", "developer", nil)
+		err := emitRunResult(context.Background(), ag, nil, time.Now(), "text", "developer", nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -133,7 +133,7 @@ func TestEmitRunResult_AgentTextRestoresQuiet(t *testing.T) {
 	ag := &mockResultProvider{filesReviewed: 1}
 	q := newQuietHandle("text", "agent")
 	got := captureStdout(t, func() {
-		err := emitRunResult(context.Background(), ag, nil, time.Now(), "text", "agent", q)
+		err := emitRunResult(context.Background(), ag, nil, time.Now(), "text", "agent", q, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -153,7 +153,7 @@ func TestEmitRunResult_AgentJSONDoesNotRestore(t *testing.T) {
 	}
 	q := newQuietHandle("json", "agent")
 	got := captureStdout(t, func() {
-		err := emitRunResult(context.Background(), ag, nil, time.Now(), "json", "agent", q)
+		err := emitRunResult(context.Background(), ag, nil, time.Now(), "json", "agent", q, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -168,10 +168,106 @@ func TestEmitRunResult_AgentJSONDoesNotRestore(t *testing.T) {
 func TestEmitRunResult_NilQuietHandle(t *testing.T) {
 	ag := &mockResultProvider{filesReviewed: 1}
 	got := captureStdout(t, func() {
-		err := emitRunResult(context.Background(), ag, nil, time.Now(), "text", "agent", nil)
+		err := emitRunResult(context.Background(), ag, nil, time.Now(), "text", "agent", nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 	_ = got
+}
+
+func TestEmitRunResult_FilteredNoMatchShowsMessage(t *testing.T) {
+	fc := parseFilterFlags("low", "")
+	ag := &mockResultProvider{filesReviewed: 1}
+	comments := []model.LlmComment{
+		{Path: "a.go", Severity: "high", Category: "bug", Content: "should be filtered out"},
+	}
+	got := captureStdout(t, func() {
+		err := emitRunResult(context.Background(), ag, comments, time.Now(), "text", "developer", nil, fc)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	if !strings.Contains(got, "No comments generated. Looks good to me.\n") {
+		t.Errorf("expected 'No comments match', got %q", got)
+	}
+}
+
+func TestEmitRunResult_SortedBySeverityAndCategory(t *testing.T) {
+	fc := parseFilterFlags("", "")
+	ag := &mockResultProvider{filesReviewed: 1}
+	comments := []model.LlmComment{
+		{Path: "c.go", Severity: "low", Category: "bug", Content: "low bug", StartLine: 1, EndLine: 2},
+		{Path: "a.go", Severity: "high", Category: "security", Content: "high sec", StartLine: 1, EndLine: 2},
+		{Path: "b.go", Severity: "medium", Category: "bug", Content: "mid bug", StartLine: 1, EndLine: 2},
+	}
+	got := captureStdout(t, func() {
+		err := emitRunResult(context.Background(), ag, comments, time.Now(), "text", "developer", nil, fc)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	// a.go (high·security) should appear first, then b.go (medium·bug), then c.go (low·bug)
+	aIdx := strings.Index(got, "a.go")
+	bIdx := strings.Index(got, "b.go")
+	cIdx := strings.Index(got, "c.go")
+	if aIdx < 0 || bIdx < 0 || cIdx < 0 {
+		t.Fatal("expected all three files in output")
+	}
+	if !(aIdx < bIdx && bIdx < cIdx) {
+		t.Errorf("expected order a.go -> b.go -> c.go, got a=%d b=%d c=%d", aIdx, bIdx, cIdx)
+	}
+}
+
+func TestEmitRunResult_FilteredWithCountHint(t *testing.T) {
+	fc := parseFilterFlags("high", "")
+	ag := &mockResultProvider{filesReviewed: 1}
+	comments := []model.LlmComment{
+		{Path: "a.go", Severity: "high", Category: "bug", Content: "keep"},
+		{Path: "b.go", Severity: "medium", Category: "style", Content: "hidden"},
+		{Path: "c.go", Severity: "low", Category: "docs", Content: "hidden"},
+	}
+	got := captureStdout(t, func() {
+		err := emitRunResult(context.Background(), ag, comments, time.Now(), "text", "developer", nil, fc)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	if !strings.Contains(got, "a.go") {
+		t.Errorf("expected a.go in output, got %q", got)
+	}
+	if strings.Contains(got, "b.go") || strings.Contains(got, "c.go") {
+		t.Errorf("did not expect filtered-out files in output, got %q", got)
+	}
+}
+
+func TestEmitRunResult_JSONFilteredByLevel(t *testing.T) {
+	fc := parseFilterFlags("high", "")
+	ag := &mockResultProvider{
+		filesReviewed: 2,
+		inputTokens:   100,
+		outputTokens:  50,
+		totalTokens:   150,
+		toolCalls:     map[string]int64{"file_read": 1},
+	}
+	comments := []model.LlmComment{
+		{Path: "a.go", Severity: "high", Category: "bug", Content: "keep"},
+		{Path: "b.go", Severity: "medium", Category: "style", Content: "hidden"},
+	}
+	got := captureStdout(t, func() {
+		err := emitRunResult(context.Background(), ag, comments, time.Now(), "json", "developer", nil, fc)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	var out jsonOutput
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(out.Comments) != 1 {
+		t.Errorf("expected 1 comment after filter, got %d", len(out.Comments))
+	}
+	if out.Comments[0].Path != "a.go" {
+		t.Errorf("expected a.go, got %s", out.Comments[0].Path)
+	}
 }

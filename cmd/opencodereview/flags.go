@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -112,6 +113,8 @@ type reviewOptions struct {
 	maxGitProcs    int
 	preview        bool
 	showHelp       bool
+	level          string // --level: comma-separated severity levels to show
+	category       string // --category: comma-separated categories to show
 }
 
 func parseReviewFlags(args []string) (reviewOptions, error) {
@@ -135,6 +138,8 @@ func parseReviewFlags(args []string) (reviewOptions, error) {
 	a.IntVar(&opts.maxTools, "max-tools", 0, "max tool call rounds per file (0 = template default; min 10)")
 	a.IntVar(&opts.maxGitProcs, "max-git-procs", 16, "max concurrent git subprocesses")
 	a.BoolVarP(&opts.preview, "preview", "p", false, "preview which files will be reviewed without running the LLM")
+	a.StringVar(&opts.level, "level", "", "comma-separated severity levels to include: high,medium,low (defaults to all)")
+	a.StringVar(&opts.category, "category", "", "comma-separated categories to include (defaults to all)")
 
 	if err := a.Parse(args); err != nil {
 		return opts, fmt.Errorf("parse flags: %w", err)
@@ -180,6 +185,19 @@ func parseReviewFlags(args []string) (reviewOptions, error) {
 
 	if opts.maxGitProcs < 0 {
 		return opts, fmt.Errorf("--max-git-procs must be a non-negative integer (0 means use default 16)")
+	}
+
+	for _, l := range splitCSV(opts.level) {
+		l = strings.ToLower(l)
+		if !allowedLevels[l] {
+			return opts, fmt.Errorf("invalid --level value %q", l)
+		}
+	}
+	for _, c := range splitCSV(opts.category) {
+		c = strings.ToLower(c)
+		if !allowedCategories[c] {
+			return opts, fmt.Errorf("invalid --category value %q", c)
+		}
 	}
 
 	return opts, nil
@@ -229,7 +247,9 @@ Flags:
   --rule string           path to JSON file with system review rules
   --timeout int           concurrent task timeout in minutes (default 10)
   --to string             target ref to end diff at (e.g., 'feature-branch')
-  --tools string          path to JSON tools config file (default: embedded)`)
+  --tools string          path to JSON tools config file (default: embedded)
+  --level string          comma-separated severity levels to include: high,medium,low (defaults to all)
+  --category string       comma-separated categories to include (defaults to all)`)
 }
 
 // --- config subcommand ---

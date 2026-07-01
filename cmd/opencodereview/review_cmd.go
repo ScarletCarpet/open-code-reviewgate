@@ -112,7 +112,8 @@ func runReview(args []string) error {
 		return fmt.Errorf("review failed: %w", err)
 	}
 
-	return emitRunResult(ctx, ag, comments, startTime, opts.outputFormat, opts.audience, q)
+	fc := parseFilterFlags(opts.level, opts.category)
+	return emitRunResult(ctx, ag, comments, startTime, opts.outputFormat, opts.audience, q, fc)
 }
 
 func resolveRepoDir(input string) (string, error) {

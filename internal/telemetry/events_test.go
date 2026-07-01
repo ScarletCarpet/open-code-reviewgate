@@ -122,15 +122,15 @@ func TestPhaseEvent_WithError(t *testing.T) {
 }
 
 func TestPrintTraceSummary_WithTokenDetails(t *testing.T) {
-	PrintTraceSummary(5, 10, 1000, 200, 1200, 0, 0, 3*time.Second)
+	PrintTraceSummary(5, 10, 5, 1000, 200, 1200, 0, 0, 3*time.Second)
 }
 
 func TestPrintTraceSummary_WithCacheTokens(t *testing.T) {
-	PrintTraceSummary(3, 2, 500, 100, 600, 200, 50, 2*time.Second)
+	PrintTraceSummary(3, 2, 1, 500, 100, 600, 200, 50, 2*time.Second)
 }
 
 func TestPrintTraceSummary_NoTokenDetails(t *testing.T) {
-	PrintTraceSummary(2, 1, 0, 0, 500, 0, 0, 1*time.Second)
+	PrintTraceSummary(2, 1, 1, 0, 0, 500, 0, 0, 1*time.Second)
 }
 
 func TestPrintToolCallStarted_WithArgs(t *testing.T) {

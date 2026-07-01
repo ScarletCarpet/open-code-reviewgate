@@ -14,6 +14,7 @@ Strictly follow the JSON format below. Do not include any additional explanatory
   "issues": [
     {
       "severity": "high|medium|low",
+      "category": "bug|security|performance|maintainability|improvement|style|documentation|other",
       "description": "A clear description of the specific problem and its potential impact for this risk point",
       "tool_guidance": [
         {
@@ -33,5 +34,14 @@ Strictly follow the JSON format below. Do not include any additional explanatory
    - `high`: May cause security vulnerabilities, data loss, system crashes, or critical functional failures
    - `medium`: May affect performance, maintainability, or involve potential edge-case problems
    - `low`: Code style, readability, or non-critical best practice suggestions
-4. **Tool Usage**: Tools are for reference purposes only and must not be actually invoked; describe the calling intent within tool_guidance
-5. **Description Requirements**: Each description must cover three dimensions — problem location, nature of the problem, and potential impact
+4. **Category Definitions**:
+  - `bug`: Logic errors, functional defects, or behavior that deviates from business requirements.
+  - `security`: Security vulnerabilities, unauthorized access, hardcoded password, injection flaws, or data exposure risks.
+  - `performance`: Issues causing memory leaks, high CPU usage, latency, or inefficient resource usage.
+  - `maintainability`: Code that increases technical debt, lacks scalability, or has excessive complexity.
+  - `improvement`: Refactoring healthy code for optimization or minor feature enhancements.
+  - `style`: Violations of coding standards, inconsistent naming conventions, or formatting issues.
+  - `documentation`: Missing comments, wrong format JSON/XML, outdated API documentation, or inaccurate README files.
+  - `other`: Miscellaneous changes or tasks that do not fit into the above categories.
+5. **Tool Usage**: Tools are for reference purposes only and must not be actually invoked; describe the calling intent within tool_guidance
+6. **Description Requirements**: Each description must cover three dimensions — problem location, nature of the problem, and potential impact

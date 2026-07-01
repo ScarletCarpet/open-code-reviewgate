@@ -38,6 +38,8 @@ type scanOptions struct {
 	batch           string // --batch: override scan template's BATCH_STRATEGY
 	maxTokensBudget int    // --max-tokens-budget: cap total token usage; 0 = unlimited
 	model           string // --model: override resolved LLM model for this scan
+	level           string // --level: comma-separated severity levels to show
+	category        string // --category: comma-separated categories to show
 	showHelp        bool
 }
 
@@ -64,6 +66,8 @@ func parseScanFlags(args []string) (scanOptions, error) {
 	a.StringVar(&opts.batch, "batch", "", "override BATCH_STRATEGY from scan template: none | by-language | by-directory")
 	a.IntVar(&opts.maxTokensBudget, "max-tokens-budget", 0, "cap total token usage (input+output); dispatch stops once exceeded (0 = unlimited)")
 	a.StringVar(&opts.model, "model", "", "override LLM model for this scan (e.g., claude-opus-4-6)")
+	a.StringVar(&opts.level, "level", "", "comma-separated severity levels to include: high,medium,low (defaults to all)")
+	a.StringVar(&opts.category, "category", "", "comma-separated categories to include (defaults to all)")
 
 	if err := a.Parse(args); err != nil {
 		return opts, fmt.Errorf("parse flags: %w", err)
@@ -89,6 +93,20 @@ func parseScanFlags(args []string) (scanOptions, error) {
 	if opts.maxTokensBudget < 0 {
 		return opts, fmt.Errorf("--max-tokens-budget must be a non-negative integer (0 means unlimited)")
 	}
+
+	for _, l := range splitCSV(opts.level) {
+		l = strings.ToLower(l)
+		if !allowedLevels[l] {
+			return opts, fmt.Errorf("invalid --level value %q", l)
+		}
+	}
+	for _, c := range splitCSV(opts.category) {
+		c = strings.ToLower(c)
+		if !allowedCategories[c] {
+			return opts, fmt.Errorf("invalid --category value %q", c)
+		}
+	}
+
 	return opts, nil
 }
 
@@ -215,7 +233,8 @@ func runScan(args []string) error {
 		return fmt.Errorf("scan failed: %w", err)
 	}
 
-	return emitRunResult(ctx, ag, comments, startTime, opts.outputFormat, opts.audience, q)
+	fc := parseFilterFlags(opts.level, opts.category)
+	return emitRunResult(ctx, ag, comments, startTime, opts.outputFormat, opts.audience, q, fc)
 }
 
 func runScanPreview(cc *commonContext, scanTpl *template.ScanTemplate, scanPaths []string) error {
@@ -284,5 +303,7 @@ Flags:
   --repo string           root directory of the git repository (default: current dir)
   --rule string           path to JSON file with system review rules
   --timeout int           concurrent task timeout in minutes (default 10)
-  --tools string          path to JSON tools config file (default: embedded)`)
+  --tools string          path to JSON tools config file (default: embedded)
+  --level string          comma-separated severity levels to include: high,medium,low (defaults to all)
+  --category string       comma-separated categories to include (defaults to all)`)
 }

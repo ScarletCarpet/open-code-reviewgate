@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -12,6 +13,149 @@ import (
 	"github.com/open-code-review/open-code-review/internal/model"
 	"github.com/open-code-review/open-code-review/internal/suggestdiff"
 )
+
+// severityOrder maps a severity string to its sort rank (lower = more severe).
+var severityOrder = map[string]int{
+	"high":   0,
+	"medium": 1,
+	"low":    2,
+}
+
+// allowedLevels lists the recognized severity values.
+var allowedLevels = func() map[string]bool {
+	m := make(map[string]bool, len(severityOrder))
+	for k := range severityOrder {
+		m[k] = true
+	}
+	return m
+}()
+
+// severityColors maps severity to an ANSI background + foreground color.
+var severityColors = map[string]string{
+	"high":   "\033[48;2;180;0;0m\033[97m",   // dark red bg + white fg
+	"medium": "\033[48;2;180;120;0m\033[97m", // dark orange bg + white fg
+	"low":    "\033[48;2;80;80;80m\033[97m",  // gray bg + white fg
+}
+
+// categoryOrder maps a category string to its sort rank (lower = more important).
+var categoryOrder = map[string]int{
+	"bug":             0,
+	"security":        1,
+	"performance":     2,
+	"maintainability": 3,
+	"improvement":     4,
+	"style":           5,
+	"documentation":   6,
+	"other":           7,
+}
+
+// allowedCategories lists the recognized categories for validation use.
+var allowedCategories = func() map[string]bool {
+	m := make(map[string]bool, len(categoryOrder))
+	for k := range categoryOrder {
+		m[k] = true
+	}
+	return m
+}()
+
+// filterConfig is an immutable snapshot of the active --level and --category
+// CLI filter values. Nil maps mean "allow all". Create via parseFilterFlags.
+type filterConfig struct {
+	levels     map[string]bool
+	categories map[string]bool
+}
+
+// hasActiveFilters reports whether any filter is set.
+func (f *filterConfig) hasActiveFilters() bool {
+	return f != nil && (len(f.levels) > 0 || len(f.categories) > 0)
+}
+
+// parseFilterFlags parses comma-separated --level and --category values into
+// a filterConfig with validation. Empty flags produce a nil config (allow all).
+func parseFilterFlags(levelFlag, categoryFlag string) *filterConfig {
+	levels := splitCSV(strings.ToLower(levelFlag))
+	cats := splitCSV(strings.ToLower(categoryFlag))
+	if len(levels) == 0 && len(cats) == 0 {
+		return nil
+	}
+
+	f := &filterConfig{}
+	if len(levels) > 0 {
+		m := make(map[string]bool, len(levels))
+		for _, l := range levels {
+			if allowedLevels[l] {
+				m[l] = true
+			}
+		}
+		if len(m) > 0 {
+			f.levels = m
+		}
+	}
+	if len(cats) > 0 {
+		m := make(map[string]bool, len(cats))
+		for _, c := range cats {
+			if allowedCategories[c] {
+				m[c] = true
+			}
+		}
+		if len(m) > 0 {
+			f.categories = m
+		}
+	}
+	if f.levels == nil && f.categories == nil {
+		return nil
+	}
+	return f
+}
+
+// severityRank returns the sort rank for a comment.
+func severityRank(c model.LlmComment) int {
+	if r, ok := severityOrder[c.Severity]; ok {
+		return r
+	}
+	return len(severityOrder) // unknown severity sorts last
+}
+
+// categoryRank returns the sort rank for a comment.
+func categoryRank(c model.LlmComment) int {
+	if r, ok := categoryOrder[c.Category]; ok {
+		return r
+	}
+	return len(categoryOrder) // unknown category sorts last
+}
+
+// sortComments sorts findings by severity (high -> medium -> low), then by category.
+func sortComments(comments []model.LlmComment) {
+	sort.SliceStable(comments, func(i, j int) bool {
+		si := severityRank(comments[i])
+		sj := severityRank(comments[j])
+		if si != sj {
+			return si < sj
+		}
+		return categoryRank(comments[i]) < categoryRank(comments[j])
+	})
+}
+
+// filterComments filters out findings that don't match the active level/category filters.
+// A nil fc means "allow all".
+// if the LLM not populated the severity or category, regard to show the comment
+func filterComments(comments []model.LlmComment, fc *filterConfig) []model.LlmComment {
+	if fc == nil || (!fc.hasActiveFilters()) {
+		return comments
+	}
+
+	out := make([]model.LlmComment, 0, len(comments))
+	for _, c := range comments {
+		if len(fc.levels) > 0 && c.Severity != "" && !fc.levels[c.Severity] {
+			continue
+		}
+		if len(fc.categories) > 0 && c.Category != "" && !fc.categories[c.Category] {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
 
 func outputText(comments []model.LlmComment) {
 	if len(comments) == 0 {
@@ -60,6 +204,10 @@ func renderComment(comment model.LlmComment) {
 
 	fmt.Printf("\n\033[2m─── %s:%d-%d ───\033[0m\n", sanitizeTerminal(comment.Path), comment.StartLine, comment.EndLine)
 
+	if badge := buildBadge(comment); badge != "" {
+		fmt.Printf("%s\n", badge)
+	}
+
 	if comment.Content != "" {
 		for _, ln := range wrapByRunes(sanitizeTerminal(comment.Content), 100) {
 			fmt.Printf("%s\n", ln)
@@ -81,6 +229,42 @@ func renderComment(comment model.LlmComment) {
 	}
 
 	fmt.Println()
+}
+
+// buildBadge renders a colored badge line for a comment, e.g.
+// Returns empty string when neither severity nor category is set.
+func buildBadge(comment model.LlmComment) string {
+	if comment.Severity == "" && comment.Category == "" {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteByte('[')
+
+	color := ""
+	label := comment.Severity
+	if comment.Severity != "" && allowedLevels[comment.Severity] {
+		color = severityColors[comment.Severity]
+	}
+
+	if label != "" {
+		if color != "" {
+			sb.WriteString(color)
+		}
+		sb.WriteString(label)
+		if color != "" {
+			sb.WriteString("\033[0m")
+		}
+	}
+	if comment.Category != "" {
+		if label != "" {
+			sb.WriteString("·")
+		}
+		sb.WriteString(comment.Category)
+	}
+	sb.WriteByte(']')
+
+	return sb.String()
 }
 
 // printDiffLine renders a single diff line with colored prefix and background on content.
@@ -178,6 +362,7 @@ func buildDiffLines(comment model.LlmComment) []suggestdiff.DiffLine {
 type jsonSummary struct {
 	FilesReviewed    int64  `json:"files_reviewed"`
 	Comments         int64  `json:"comments"`
+	FilteredComments int64  `json:"filtered_comments,omitempty"`
 	TotalTokens      int64  `json:"total_tokens"`
 	InputTokens      int64  `json:"input_tokens"`
 	OutputTokens     int64  `json:"output_tokens"`
@@ -197,14 +382,18 @@ type jsonOutput struct {
 	Summary        *jsonSummary         `json:"summary,omitempty"`
 	ToolCalls      *jsonToolCalls       `json:"tool_calls"`
 	Comments       []model.LlmComment   `json:"comments"`
+	FilteredCount  int                  `json:"filtered_count,omitempty"`
 	Warnings       []agent.AgentWarning `json:"warnings,omitempty"`
 	ProjectSummary string               `json:"project_summary,omitempty"`
 }
 
-func outputJSON(comments []model.LlmComment) error {
+func outputJSON(comments []model.LlmComment, filteredCount int) error {
 	out := jsonOutput{
 		Status:   "success",
 		Comments: comments,
+	}
+	if filteredCount > 0 {
+		out.FilteredCount = filteredCount
 	}
 	if len(comments) == 0 {
 		out.Message = "No comments generated. Looks good to me."
@@ -216,13 +405,15 @@ func outputJSON(comments []model.LlmComment) error {
 
 func outputJSONWithWarnings(comments []model.LlmComment, warnings []agent.AgentWarning,
 	filesReviewed, inputTokens, outputTokens, totalTokens, cacheReadTokens, cacheWriteTokens int64,
-	duration time.Duration, projectSummary string, toolCalls map[string]int64) error {
+	duration time.Duration, projectSummary string, toolCalls map[string]int64,
+	commentsBeforeFilter, commentsAfterFilter int) error {
 	out := jsonOutput{
 		Status:   "success",
 		Comments: comments,
 		Summary: &jsonSummary{
 			FilesReviewed:    filesReviewed,
-			Comments:         int64(len(comments)),
+			Comments:         int64(commentsAfterFilter),
+			FilteredComments: int64(commentsBeforeFilter - commentsAfterFilter),
 			TotalTokens:      totalTokens,
 			InputTokens:      inputTokens,
 			OutputTokens:     outputTokens,
@@ -244,7 +435,7 @@ func outputJSONWithWarnings(comments []model.LlmComment, warnings []agent.AgentW
 		Total:  total,
 		ByTool: byTool,
 	}
-	if len(comments) == 0 {
+	if commentsAfterFilter == 0 {
 		if hasSubtaskErrors(warnings) {
 			out.Message = "Some files could not be reviewed due to errors."
 		} else {
@@ -340,4 +531,21 @@ func statusBadge(status string) string {
 	default:
 		return "[?]"
 	}
+}
+
+// splitCSV splits a comma-separated string, trimming whitespace, and
+// returns non-empty entries.
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

@@ -168,7 +168,7 @@ func TestOutputJSONWithWarnings_NoCommentsSubtaskError(t *testing.T) {
 	os.Stdout = w
 
 	warnings := []agent.AgentWarning{{Type: "subtask_error", File: "x.go", Message: "fail"}}
-	err := outputJSONWithWarnings(nil, warnings, 1, 10, 5, 15, 0, 0, time.Second, "", nil)
+	err := outputJSONWithWarnings(nil, warnings, 1, 10, 5, 15, 0, 0, time.Second, "", nil, 0, 0)
 
 	w.Close()
 	os.Stdout = old
@@ -220,7 +220,7 @@ func TestOutputJSON(t *testing.T) {
 	comments := []model.LlmComment{
 		{Path: "a.go", Content: "fix bug", StartLine: 1, EndLine: 5},
 	}
-	err := outputJSON(comments)
+	err := outputJSON(comments, 0)
 
 	w.Close()
 	os.Stdout = old
@@ -249,7 +249,7 @@ func TestOutputJSON_NoComments(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := outputJSON(nil)
+	err := outputJSON(nil, 0)
 
 	w.Close()
 	os.Stdout = old
@@ -275,7 +275,7 @@ func TestOutputJSONWithWarnings(t *testing.T) {
 
 	comments := []model.LlmComment{{Path: "b.go", Content: "test"}}
 	warnings := []agent.AgentWarning{{Type: "subtask_error", File: "c.go", Message: "failed"}}
-	err := outputJSONWithWarnings(comments, warnings, 5, 100, 50, 150, 10, 5, 3*time.Second, "summary", map[string]int64{"file_read": 3})
+	err := outputJSONWithWarnings(comments, warnings, 5, 100, 50, 150, 10, 5, 3*time.Second, "summary", map[string]int64{"file_read": 3}, len(comments), len(comments))
 
 	w.Close()
 	os.Stdout = old
@@ -309,7 +309,7 @@ func TestOutputJSONWithWarnings_NoCommentsNoErrors(t *testing.T) {
 	os.Stdout = w
 
 	warnings := []agent.AgentWarning{{Type: "warning", Message: "something"}}
-	err := outputJSONWithWarnings(nil, warnings, 2, 50, 20, 70, 0, 0, time.Second, "", nil)
+	err := outputJSONWithWarnings(nil, warnings, 2, 50, 20, 70, 0, 0, time.Second, "", nil, 0, 0)
 
 	w.Close()
 	os.Stdout = old
@@ -529,6 +529,202 @@ func TestOutputPreviewText_WithReviewableFiles(t *testing.T) {
 	}
 	if !strings.Contains(got, "main.go") || !strings.Contains(got, "util.go") {
 		t.Errorf("expected file paths, got %q", got)
+	}
+}
+
+func TestSeverityRank(t *testing.T) {
+	tests := []struct {
+		severity string
+		want     int
+	}{
+		{"high", 0},
+		{"medium", 1},
+		{"low", 2},
+		{"", 3},
+		{"critical", 3},
+	}
+	for _, tc := range tests {
+		c := model.LlmComment{Severity: tc.severity}
+		got := severityRank(c)
+		if got != tc.want {
+			t.Errorf("severityRank(%q) = %d, want %d", tc.severity, got, tc.want)
+		}
+	}
+}
+
+func TestSortComments(t *testing.T) {
+	comments := []model.LlmComment{
+		{Path: "a.go", Content: "low perf", Severity: "low", Category: "performance"},
+		{Path: "b.go", Content: "high bug", Severity: "high", Category: "bug"},
+		{Path: "c.go", Content: "medium style", Severity: "medium", Category: "style"},
+		{Path: "d.go", Content: "high sec", Severity: "high", Category: "security"},
+	}
+	sortComments(comments)
+
+	wantOrder := []string{"b.go", "d.go", "c.go", "a.go"}
+	for i, c := range comments {
+		if c.Path != wantOrder[i] {
+			t.Errorf("position %d: got path %q, want %q", i, c.Path, wantOrder[i])
+		}
+	}
+}
+
+func TestFilterComments_NoFilters(t *testing.T) {
+	fc := parseFilterFlags("", "")
+	comments := []model.LlmComment{
+		{Path: "a.go", Severity: "high", Category: "bug"},
+		{Path: "b.go", Severity: "low", Category: "style"},
+	}
+	got := filterComments(comments, fc)
+	if len(got) != 2 {
+		t.Errorf("expected 2 comments, got %d", len(got))
+	}
+	// nil config also means no filter
+	got2 := filterComments(comments, nil)
+	if len(got2) != 2 {
+		t.Errorf("expected 2 comments from nil fc, got %d", len(got2))
+	}
+}
+
+func TestFilterComments_ByLevel(t *testing.T) {
+	fc := parseFilterFlags("high", "")
+	comments := []model.LlmComment{
+		{Path: "a.go", Severity: "high", Category: "bug"},
+		{Path: "b.go", Severity: "medium", Category: "style"},
+		{Path: "c.go", Severity: "low", Category: "docs"},
+	}
+	got := filterComments(comments, fc)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 comment, got %d", len(got))
+	}
+	if got[0].Path != "a.go" {
+		t.Errorf("expected a.go, got %s", got[0].Path)
+	}
+}
+
+func TestFilterComments_ByCategory(t *testing.T) {
+	fc := parseFilterFlags("", "bug,security")
+	comments := []model.LlmComment{
+		{Path: "a.go", Severity: "high", Category: "bug"},
+		{Path: "b.go", Severity: "mid", Category: "style"},
+		{Path: "c.go", Severity: "high", Category: "security"},
+	}
+	got := filterComments(comments, fc)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 comments, got %d", len(got))
+	}
+	if got[0].Path != "a.go" || got[1].Path != "c.go" {
+		t.Errorf("expected a.go and c.go, got %s, %s", got[0].Path, got[1].Path)
+	}
+}
+
+func TestFilterComments_ByLevelAndCategory(t *testing.T) {
+	fc := parseFilterFlags("medium", "bug,security")
+	comments := []model.LlmComment{
+		{Path: "a.go", Severity: "high", Category: "bug"},
+		{Path: "b.go", Severity: "medium", Category: "style"},
+		{Path: "c.go", Severity: "high", Category: "security"},
+	}
+	got := filterComments(comments, fc)
+	if len(got) != 0 {
+		t.Errorf("expected 0 comments, got %d", len(got))
+	}
+}
+
+func TestParseFilterFlags(t *testing.T) {
+	// Empty flags produce nil
+	fc := parseFilterFlags("", "")
+	if fc != nil {
+		t.Error("expected nil for empty flags")
+	}
+
+	fc = parseFilterFlags("high,low", "bug,security")
+	if fc == nil {
+		t.Fatal("expected non-nil filterConfig")
+	}
+	if len(fc.levels) != 2 {
+		t.Errorf("expected 2 level filters, got %d", len(fc.levels))
+	}
+	if !fc.levels["high"] || !fc.levels["low"] {
+		t.Error("expected high and low in levels")
+	}
+	if len(fc.categories) != 2 {
+		t.Errorf("expected 2 category filters, got %d", len(fc.categories))
+	}
+
+	// medium is a recognized level
+	fc = parseFilterFlags("medium", "")
+	if !fc.levels["medium"] {
+		t.Error("expected medium in levels")
+	}
+
+	// Unknown levels are ignored
+	fc = parseFilterFlags("critical,high", "")
+	if len(fc.levels) != 1 || !fc.levels["high"] {
+		t.Error("expected only high, unknown 'critical' should be skipped")
+	}
+
+	// Unknown categories are ignored
+	fc = parseFilterFlags("", "bug,typo")
+	if len(fc.categories) != 1 || !fc.categories["bug"] {
+		t.Error("expected only bug, unknown 'typo' should be skipped")
+	}
+
+	// All invalid produces nil
+	fc = parseFilterFlags("critical", "typo")
+	if fc != nil {
+		t.Error("expected nil when all values are invalid")
+	}
+}
+
+func TestBuildBadge_Color(t *testing.T) {
+	// With known severity and category
+	got := buildBadge(model.LlmComment{Severity: "high", Category: "bug"})
+	if !strings.Contains(got, "high") {
+		t.Errorf("expected high in badge, got %q", got)
+	}
+	if !strings.Contains(got, "\033[") {
+		t.Errorf("expected ANSI escape codes in badge, got %q", got)
+	}
+
+	// medium displayed
+	got2 := buildBadge(model.LlmComment{Severity: "medium", Category: "security"})
+	if !strings.Contains(got2, "[\x1b[48;2;180;120;0m\x1b[97mmedium\x1b[0m·security]") {
+		t.Errorf("expected 'medium · security' in badge, got %q", got2)
+	}
+
+	// Without severity
+	got3 := buildBadge(model.LlmComment{Category: "test"})
+	if !strings.Contains(got3, "test") {
+		t.Errorf("expected category in badge, got %q", got3)
+	}
+	if strings.Contains(got3, "\033[") {
+		t.Errorf("expected no ANSI codes for category-only badge, got %q", got3)
+	}
+
+	// Without both
+	got4 := buildBadge(model.LlmComment{})
+	if got4 != "" {
+		t.Errorf("expected empty badge, got %q", got4)
+	}
+}
+
+func TestSplitCSV(t *testing.T) {
+	tests := []struct {
+		input string
+		want  int
+	}{
+		{"", 0},
+		{"high", 1},
+		{"high,medium,low", 3},
+		{"  high , low ", 2},
+		{",,", 0},
+	}
+	for _, tc := range tests {
+		got := splitCSV(tc.input)
+		if len(got) != tc.want {
+			t.Errorf("splitCSV(%q) = %d items, want %d (got %v)", tc.input, len(got), tc.want, got)
+		}
 	}
 }
 
