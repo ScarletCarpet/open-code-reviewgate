@@ -22,6 +22,7 @@ import (
 	"github.com/open-code-review/open-code-review/internal/stdout"
 	"github.com/open-code-review/open-code-review/internal/telemetry"
 	"github.com/open-code-review/open-code-review/internal/tool"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // AgentWarning is re-exported from llmloop for backwards compatibility with
@@ -500,6 +501,28 @@ func (a *Agent) executeSubtask(ctx context.Context, d model.Diff) error {
 	return err
 }
 
+// submitFilterTool is the tool definition that constrains the review filter
+var submitFilterTool = llm.ToolDef{
+	Type: "function",
+	Function: llm.FunctionDef{
+		Name:        "submit_filter_result",
+		Description: "Submit the list of review comments that are provably incorrect based on the diff",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"comment_ids": map[string]any{
+					"type":        "array",
+					"description": "IDs of review comments confirmed as incorrect return an empty array when none, e.g. [\"c-0\", \"c-2\"]",
+					"items": map[string]any{
+						"type": "string",
+					},
+				},
+			},
+			"required": []any{"comment_ids"},
+		},
+	},
+}
+
 // executeReviewFilter runs the REVIEW_FILTER_TASK to remove comments that are
 // provably incorrect based solely on the diff. Errors are logged and silently ignored.
 func (a *Agent) executeReviewFilter(ctx context.Context, d model.Diff, newPath string) {
@@ -537,6 +560,7 @@ func (a *Agent) executeReviewFilter(ctx context.Context, d model.Diff, newPath s
 	resp, err := a.args.LLMClient.CompletionsWithCtx(ctx, llm.ChatRequest{
 		Model:     a.args.Model,
 		Messages:  messages,
+		Tools:     []llm.ToolDef{submitFilterTool},
 		MaxTokens: a.args.Template.MaxTokens,
 	})
 	if err != nil {
@@ -547,12 +571,23 @@ func (a *Agent) executeReviewFilter(ctx context.Context, d model.Diff, newPath s
 	rec.SetResponse(resp, time.Since(startTime))
 	a.runner.RecordUsage(resp.Usage)
 
-	indices := parseFilterResponse(resp.Content(), len(comments))
+	indices := parseFilterToolCalls(resp.ToolCalls(), len(comments))
+	if indices == nil {
+		indices = parseFilterResponse(resp.Content(), len(comments))
+	}
 	if len(indices) == 0 {
+		telemetry.Event(ctx, "review_filter.completed",
+			attribute.String("file.path", newPath),
+			attribute.Int("total_comments", len(comments)),
+			attribute.Int("removed", 0))
 		return
 	}
 
 	a.args.CommentCollector.RemoveByPathAndIndices(newPath, indices)
+	telemetry.Event(ctx, "review_filter.completed",
+		attribute.String("file.path", newPath),
+		attribute.Int("total_comments", len(comments)),
+		attribute.Int("removed", len(indices)))
 	fmt.Fprintf(stdout.Writer(), "[ocr] Review filter removed %d comment(s) for %s\n", len(indices), newPath)
 }
 
@@ -573,6 +608,32 @@ func buildFilterCommentsJSON(comments []model.LlmComment) string {
 	}
 	data, _ := json.Marshal(items)
 	return string(data)
+}
+
+// parseFilterToolCalls extracts comment indices from the LLM's tool call
+// response to submit_filter_result. Returns nil if no matching tool call
+// is found, allowing fallback to text-based parsing.
+func parseFilterToolCalls(calls []llm.ToolCall, total int) map[int]struct{} {
+	for _, call := range calls {
+		if call.Function.Name != "submit_filter_result" {
+			continue
+		}
+		var args struct {
+			CommentIDs []string `json:"comment_ids"`
+		}
+		if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
+			continue
+		}
+		indices := make(map[int]struct{})
+		for _, id := range args.CommentIDs {
+			var idx int
+			if _, err := fmt.Sscanf(id, "c-%d", &idx); err == nil && idx >= 0 && idx < total {
+				indices[idx] = struct{}{}
+			}
+		}
+		return indices
+	}
+	return nil
 }
 
 // parseFilterResponse extracts comment indices from the LLM filter response.

@@ -385,7 +385,7 @@ func LoadSession(root, encodedRepo, sessionID string) (*ViewSession, error) {
 							name, _ := tm["name"].(string)
 							args, _ := tm["arguments"].(string)
 							info := ToolCallInfo{Name: name, Arguments: args}
-							if name == "task_done" {
+							if name == "task_done" || name == "submit_filter_result" {
 								info.Ok = true
 							}
 							card.ToolCalls = append(card.ToolCalls, info)
