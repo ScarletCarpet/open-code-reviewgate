@@ -838,6 +838,98 @@ func TestSetConfigValueProviderClearsModel(t *testing.T) {
 	}
 }
 
+func TestSetConfigValueProviderTopP(t *testing.T) {
+	cfg := &Config{
+		Provider:  "anthropic",
+		Providers: map[string]ProviderEntry{"anthropic": {}},
+	}
+	if err := setConfigValue(cfg, "providers.anthropic.top_p", "0.9"); err != nil {
+		t.Fatalf("setConfigValue: %v", err)
+	}
+	entry := cfg.Providers["anthropic"]
+	if entry.TopP == nil || *entry.TopP != 0.9 {
+		t.Errorf("TopP = %v, want 0.9", entry.TopP)
+	}
+}
+
+func TestSetConfigValueProviderTopK(t *testing.T) {
+	cfg := &Config{
+		Provider:  "anthropic",
+		Providers: map[string]ProviderEntry{"anthropic": {}},
+	}
+	if err := setConfigValue(cfg, "providers.anthropic.top_k", "50"); err != nil {
+		t.Fatalf("setConfigValue: %v", err)
+	}
+	entry := cfg.Providers["anthropic"]
+	if entry.TopK == nil || *entry.TopK != 50 {
+		t.Errorf("TopK = %v, want 50", entry.TopK)
+	}
+}
+
+func TestSetConfigValueProviderTemperature(t *testing.T) {
+	cfg := &Config{
+		Provider:  "anthropic",
+		Providers: map[string]ProviderEntry{"anthropic": {}},
+	}
+	if err := setConfigValue(cfg, "providers.anthropic.temperature", "0.3"); err != nil {
+		t.Fatalf("setConfigValue: %v", err)
+	}
+	entry := cfg.Providers["anthropic"]
+	if entry.Temperature == nil || *entry.Temperature != 0.3 {
+		t.Errorf("Temperature = %v, want 0.3", entry.Temperature)
+	}
+}
+
+func TestSetConfigValueProviderTopPOutOfRange(t *testing.T) {
+	cfg := &Config{
+		Provider:  "anthropic",
+		Providers: map[string]ProviderEntry{"anthropic": {}},
+	}
+	if err := setConfigValue(cfg, "providers.anthropic.top_p", "1.5"); err == nil {
+		t.Fatal("expected error for top_p > 1")
+	}
+	if err := setConfigValue(cfg, "providers.anthropic.top_p", "0"); err == nil {
+		t.Fatal("expected error for top_p == 0 (must be > 0)")
+	}
+	if err := setConfigValue(cfg, "providers.anthropic.top_p", "-0.1"); err == nil {
+		t.Fatal("expected error for negative top_p")
+	}
+}
+
+func TestSetConfigValueProviderTopKNegative(t *testing.T) {
+	cfg := &Config{
+		Provider:  "anthropic",
+		Providers: map[string]ProviderEntry{"anthropic": {}},
+	}
+	if err := setConfigValue(cfg, "providers.anthropic.top_k", "-1"); err == nil {
+		t.Fatal("expected error for negative top_k")
+	}
+}
+
+func TestSetConfigValueProviderTemperatureOutOfRange(t *testing.T) {
+	cfg := &Config{
+		Provider:  "anthropic",
+		Providers: map[string]ProviderEntry{"anthropic": {}},
+	}
+	if err := setConfigValue(cfg, "providers.anthropic.temperature", "3.0"); err == nil {
+		t.Fatal("expected error for temperature > 2")
+	}
+}
+
+func TestSetConfigValueCustomProviderTopP(t *testing.T) {
+	cfg := &Config{
+		Provider:        "my-gateway",
+		CustomProviders: map[string]ProviderEntry{"my-gateway": {}},
+	}
+	if err := setConfigValue(cfg, "custom_providers.my-gateway.top_p", "0.8"); err != nil {
+		t.Fatalf("setConfigValue: %v", err)
+	}
+	entry := cfg.CustomProviders["my-gateway"]
+	if entry.TopP == nil || *entry.TopP != 0.8 {
+		t.Errorf("TopP = %v, want 0.8", entry.TopP)
+	}
+}
+
 func TestRunConfigUnset_InvalidKey(t *testing.T) {
 	if err := runConfigUnset("provider"); err == nil {
 		t.Fatal("expected error for non custom_providers key")

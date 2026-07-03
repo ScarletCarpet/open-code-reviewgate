@@ -38,6 +38,9 @@ type scanOptions struct {
 	batch           string // --batch: override scan template's BATCH_STRATEGY
 	maxTokensBudget int    // --max-tokens-budget: cap total token usage; 0 = unlimited
 	model           string // --model: override resolved LLM model for this scan
+	topP            float64
+	topK            int
+	temperature     float64
 	showHelp        bool
 }
 
@@ -64,6 +67,9 @@ func parseScanFlags(args []string) (scanOptions, error) {
 	a.StringVar(&opts.batch, "batch", "", "override BATCH_STRATEGY from scan template: none | by-language | by-directory")
 	a.IntVar(&opts.maxTokensBudget, "max-tokens-budget", 0, "cap total token usage (input+output); dispatch stops once exceeded (0 = unlimited)")
 	a.StringVar(&opts.model, "model", "", "override LLM model for this scan (e.g., claude-opus-4-6)")
+	a.Float64Var(&opts.topP, "top-p", -1, "nucleus sampling parameter top_p (-1 = use provider default)")
+	a.IntVar(&opts.topK, "top-k", -1, "top-k sampling parameter (-1 = use provider default)")
+	a.Float64Var(&opts.temperature, "temperature", -1, "temperature parameter (-1 = use provider default)")
 
 	if err := a.Parse(args); err != nil {
 		return opts, fmt.Errorf("parse flags: %w", err)
@@ -88,6 +94,12 @@ func parseScanFlags(args []string) (scanOptions, error) {
 	}
 	if opts.maxTokensBudget < 0 {
 		return opts, fmt.Errorf("--max-tokens-budget must be a non-negative integer (0 means unlimited)")
+	}
+	if opts.topP > 1 {
+		return opts, fmt.Errorf("--top-p must be <= 1, got %f", opts.topP)
+	}
+	if opts.temperature > 0 && opts.temperature > 2 {
+		return opts, fmt.Errorf("--temperature must be <= 2, got %f", opts.temperature)
 	}
 	return opts, nil
 }
@@ -156,7 +168,7 @@ func runScan(args []string) error {
 		return runScanPreview(cc, scanTpl, scanPaths)
 	}
 
-	rt, err := loadLLMRuntime(cc.Template, opts.toolConfigPath, opts.model)
+	rt, err := loadLLMRuntime(cc.Template, opts.toolConfigPath, opts.model, cliFloatOrNil(opts.topP), cliIntOrNil(opts.topK), cliFloatOrNil(opts.temperature))
 	if err != nil {
 		return err
 	}
@@ -200,6 +212,9 @@ func runScan(args []string) error {
 		SkipPlan:              opts.noPlan,
 		SkipDedup:             opts.noDedup,
 		SkipSummary:           opts.noSummary,
+		TopP:                  rt.TopP,
+		TopK:                  rt.TopK,
+		Temperature:           rt.Temperature,
 	})
 
 	q := newQuietHandle(opts.outputFormat, opts.audience)

@@ -194,6 +194,9 @@ type ProviderEntry struct {
 	Model        string            `json:"model,omitempty"`
 	Models       []string          `json:"models,omitempty"`
 	AuthHeader   string            `json:"auth_header,omitempty"`
+	TopP         *float64          `json:"top_p,omitempty"`
+	TopK         *int              `json:"top_k,omitempty"`
+	Temperature  *float64          `json:"temperature,omitempty"`
 	ExtraBody    map[string]any    `json:"extra_body,omitempty"`
 	ExtraHeaders map[string]string `json:"extra_headers,omitempty"`
 }
@@ -374,7 +377,7 @@ func setConfigValue(cfg *Config, key, value string) error {
 		}
 		cfg.Llm.ExtraBody = m
 	default:
-		return fmt.Errorf("unknown config key: %s\nSupported keys: provider, model, providers.<name>.<field>, custom_providers.<name>.<field>, mcp_servers.<name>.<field>, llm.url, llm.auth_token, llm.auth_header, llm.model, llm.use_anthropic, llm.extra_body, llm.extra_headers, language, telemetry.enabled, telemetry.exporter, telemetry.otlp_endpoint, telemetry.content_logging\nProvider fields: api_key, url, protocol, model, models, auth_header, extra_body, extra_headers\nMCP server fields: command, args, env, tools, setup", key)
+		return fmt.Errorf("unknown config key: %s\nSupported keys: provider, model, providers.<name>.<field>, custom_providers.<name>.<field>, mcp_servers.<name>.<field>, llm.url, llm.auth_token, llm.auth_header, llm.model, llm.use_anthropic, llm.extra_body, llm.extra_headers, language, telemetry.enabled, telemetry.exporter, telemetry.otlp_endpoint, telemetry.content_logging\nProvider fields: api_key, url, protocol, model, models, auth_header, top_p, top_k, temperature, extra_body, extra_headers\nMCP server fields: command, args, env, tools, setup", key)
 	}
 	return nil
 }
@@ -416,8 +419,35 @@ func applyProviderField(entry *ProviderEntry, field, key, value string) error {
 			return fmt.Errorf("invalid extra headers for %s: %w", key, err)
 		}
 		entry.ExtraHeaders = parsed
+	case "top_p":
+		f, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid float for %s: %w", key, err)
+		}
+		if f <= 0 || f > 1 {
+			return fmt.Errorf("top_p must be between 0 (exclusive) and 1, got %f", f)
+		}
+		entry.TopP = &f
+	case "top_k":
+		i, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid integer for %s: %w", key, err)
+		}
+		if i < 0 {
+			return fmt.Errorf("top_k must be non-negative, got %d", i)
+		}
+		entry.TopK = &i
+	case "temperature":
+		f, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid float for %s: %w", key, err)
+		}
+		if f < 0 || f > 2 {
+			return fmt.Errorf("temperature must be between 0 and 2, got %f", f)
+		}
+		entry.Temperature = &f
 	default:
-		return fmt.Errorf("unknown provider field %q: supported fields are api_key, url, protocol, model, models, auth_header, extra_body, extra_headers", field)
+		return fmt.Errorf("unknown provider field %q: supported fields are api_key, url, protocol, model, models, auth_header, top_p, top_k, temperature, extra_body, extra_headers", field)
 	}
 	return nil
 }

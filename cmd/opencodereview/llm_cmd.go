@@ -70,9 +70,12 @@ func runLLMTest() error {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		return llmClient.CompletionsWithCtx(ctx, llm.ChatRequest{
-			Model:     ep.Model,
-			Messages:  messages,
-			MaxTokens: 2048,
+			Model:       ep.Model,
+			Messages:    messages,
+			MaxTokens:   2048,
+			Temperature: ep.Temperature,
+			TopP:        ep.TopP,
+			TopK:        ep.TopK,
 		})
 	}()
 	if err != nil {

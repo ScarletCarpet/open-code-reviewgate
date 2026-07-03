@@ -114,6 +114,9 @@ type llmRuntime struct {
 	MainToolDefs []llm.ToolDef
 	Collector    *tool.CommentCollector
 	AppCfg       *Config
+	TopP         *float64
+	TopK         *int
+	Temperature  *float64
 }
 
 // loadLLMRuntime loads tool defs from toolConfigPath, reads the app config
@@ -121,7 +124,10 @@ type llmRuntime struct {
 // tpl — defaulting when the config file is absent), resolves the LLM
 // endpoint (honoring modelOverride from --model when non-empty), and
 // returns the runtime bundle. tpl is mutated in place.
-func loadLLMRuntime(tpl *template.Template, toolConfigPath, modelOverride string) (*llmRuntime, error) {
+//
+// cliTopP, cliTopK, cliTemperature are CLI-level overrides for sampling
+// parameters that take precedence over provider config values.
+func loadLLMRuntime(tpl *template.Template, toolConfigPath, modelOverride string, cliTopP *float64, cliTopK *int, cliTemperature *float64) (*llmRuntime, error) {
 	toolEntries, err := toolsconfig.Load(toolConfigPath)
 	if err != nil {
 		return nil, fmt.Errorf("load tools: %w", err)
@@ -150,6 +156,20 @@ func loadLLMRuntime(tpl *template.Template, toolConfigPath, modelOverride string
 		return nil, fmt.Errorf("resolve LLM endpoint: %w", err)
 	}
 
+	// CLI overrides take precedence over provider config values.
+	topP := cliTopP
+	if topP == nil {
+		topP = ep.TopP
+	}
+	topK := cliTopK
+	if topK == nil {
+		topK = ep.TopK
+	}
+	temperature := cliTemperature
+	if temperature == nil {
+		temperature = ep.Temperature
+	}
+
 	return &llmRuntime{
 		Client:       llm.NewLLMClient(ep),
 		Model:        ep.Model,
@@ -157,6 +177,9 @@ func loadLLMRuntime(tpl *template.Template, toolConfigPath, modelOverride string
 		MainToolDefs: mainToolDefs,
 		Collector:    tool.NewCommentCollector(),
 		AppCfg:       appCfg,
+		TopP:         topP,
+		TopK:         topK,
+		Temperature:  temperature,
 	}, nil
 }
 
@@ -283,4 +306,24 @@ func emitRunResult(
 		fmt.Printf("\n\n──────── Project Summary ────────\n\n%s\n", summary)
 	}
 	return nil
+}
+
+// cliFloatOrNil returns a *float64 pointer if v >= 0, otherwise nil.
+// A negative value means "not set" (flag default). Since temperature,
+// top_p, and top_k are all non-negative, -1 is a safe sentinel.
+func cliFloatOrNil(v float64) *float64 {
+	if v < 0 {
+		return nil
+	}
+	return &v
+}
+
+// cliIntOrNil returns a *int pointer if v >= 0, otherwise nil.
+// A negative value means "not set" (flag default). Since temperature,
+// top_k are non-negative, -1 is a safe sentinel.
+func cliIntOrNil(v int) *int {
+	if v < 0 {
+		return nil
+	}
+	return &v
 }

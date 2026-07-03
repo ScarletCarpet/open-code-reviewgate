@@ -184,6 +184,9 @@ type ClientConfig struct {
 	Model        string            // Default model override
 	AuthHeader   string            // Auth header name: "x-api-key", "authorization", or empty for protocol default
 	Timeout      time.Duration     // Request timeout
+	TopP         *float64          // Default nucleus sampling parameter
+	TopK         *int              // Default top-k sampling parameter
+	Temperature  *float64          // Default temperature parameter
 	ExtraBody    map[string]any    // Vendor-specific fields merged into every request body
 	ExtraHeaders map[string]string // Extra HTTP headers sent with every request
 }
@@ -199,6 +202,9 @@ func NewLLMClient(ep ResolvedEndpoint) LLMClient {
 		Model:        ep.Model,
 		AuthHeader:   ep.AuthHeader,
 		Timeout:      ep.Timeout,
+		TopP:         ep.TopP,
+		TopK:         ep.TopK,
+		Temperature:  ep.Temperature,
 		ExtraBody:    ep.ExtraBody,
 		ExtraHeaders: ep.ExtraHeaders,
 	}
@@ -317,11 +323,30 @@ type ChatRequest struct {
 	Messages    []Message `json:"messages"`
 	Tools       []ToolDef `json:"tools,omitempty"`
 	Temperature *float64  `json:"temperature,omitempty"`
+	TopP        *float64  `json:"top_p,omitempty"`
+	TopK        *int      `json:"top_k,omitempty"`
 	MaxTokens   int       `json:"max_tokens,omitempty"`
+}
+
+// ApplyDefaults fills unset fields from the given ClientConfig defaults.
+func (r *ChatRequest) ApplyDefaults(cfg *ClientConfig) {
+	if r.Temperature == nil && cfg != nil && cfg.Temperature != nil {
+		v := *cfg.Temperature
+		r.Temperature = &v
+	}
+	if r.TopP == nil && cfg != nil && cfg.TopP != nil {
+		v := *cfg.TopP
+		r.TopP = &v
+	}
+	if r.TopK == nil && cfg != nil && cfg.TopK != nil {
+		v := *cfg.TopK
+		r.TopK = &v
+	}
 }
 
 // CompletionsWithCtx sends a chat completion request with context support for cancellation and timeout.
 func (c *OpenAIClient) CompletionsWithCtx(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
+	req.ApplyDefaults(&c.cfg)
 	model := req.Model
 	if model == "" {
 		model = c.cfg.Model
@@ -404,6 +429,9 @@ func (c *OpenAIClient) buildOpenAIParams(model string, req ChatRequest) openai.C
 	}
 	if req.Temperature != nil {
 		params.Temperature = openai.Float(*req.Temperature)
+	}
+	if req.TopP != nil {
+		params.TopP = openai.Float(*req.TopP)
 	}
 
 	return params
@@ -530,6 +558,7 @@ func NewAnthropicClient(cfg ClientConfig) *AnthropicClient {
 
 // CompletionsWithCtx sends a chat completion request with context support.
 func (c *AnthropicClient) CompletionsWithCtx(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
+	req.ApplyDefaults(&c.cfg)
 	model := req.Model
 	if model == "" {
 		model = c.cfg.Model
@@ -659,6 +688,12 @@ func (c *AnthropicClient) buildAnthropicParams(model string, req ChatRequest) (a
 	}
 	if req.Temperature != nil {
 		params.Temperature = anthropic.Float(*req.Temperature)
+	}
+	if req.TopP != nil {
+		params.TopP = anthropic.Float(*req.TopP)
+	}
+	if req.TopK != nil {
+		params.TopK = anthropic.Int(int64(*req.TopK))
 	}
 
 	return params, nil

@@ -54,6 +54,10 @@ func (a *ocrFlagSet) IntVar(p *int, name string, value int, usage string) {
 	a.fs.IntVar(p, name, value, usage)
 }
 
+func (a *ocrFlagSet) Float64Var(p *float64, name string, value float64, usage string) {
+	a.fs.Float64Var(p, name, value, usage)
+}
+
 func (a *ocrFlagSet) DurationVar(p *time.Duration, name string, value time.Duration, usage string) {
 	a.fs.DurationVar(p, name, value, usage)
 }
@@ -106,6 +110,9 @@ type reviewOptions struct {
 	audience       string // --audience: "human" (default) or "agent"
 	background     string // --background: optional requirement context
 	model          string // --model: override resolved LLM model for this review
+	topP           float64
+	topK           int
+	temperature    float64
 	concurrency    int
 	perFileTimeout int
 	maxTools       int
@@ -132,6 +139,9 @@ func parseReviewFlags(args []string) (reviewOptions, error) {
 	a.StringVar(&opts.audience, "audience", "human", "output audience: human (show progress) or agent (summary only)")
 	a.StringVarP(&opts.background, "background", "b", "", "optional requirement/business context for the review")
 	a.StringVar(&opts.model, "model", "", "override LLM model for this review (e.g., claude-opus-4-6)")
+	a.Float64Var(&opts.topP, "top-p", -1, "nucleus sampling parameter top_p (-1 = use provider default)")
+	a.IntVar(&opts.topK, "top-k", -1, "top-k sampling parameter (-1 = use provider default)")
+	a.Float64Var(&opts.temperature, "temperature", -1, "temperature parameter (-1 = use provider default)")
 	a.IntVar(&opts.maxTools, "max-tools", 0, "max tool call rounds per file (0 = template default; min 10)")
 	a.IntVar(&opts.maxGitProcs, "max-git-procs", 16, "max concurrent git subprocesses")
 	a.BoolVarP(&opts.preview, "preview", "p", false, "preview which files will be reviewed without running the LLM")
@@ -182,6 +192,16 @@ func parseReviewFlags(args []string) (reviewOptions, error) {
 		return opts, fmt.Errorf("--max-git-procs must be a non-negative integer (0 means use default 16)")
 	}
 
+	if opts.topP > 1 {
+		return opts, fmt.Errorf("--top-p must be <= 1, got %f", opts.topP)
+	}
+	if opts.temperature > 0 && opts.temperature > 2 {
+		return opts, fmt.Errorf("--temperature must be <= 2, got %f", opts.temperature)
+	}
+	if opts.topK > 0 && opts.topK > 100 {
+		fmt.Fprintf(os.Stderr, "[ocr] --top-k %d is unusually large, expected <= 100\n", opts.topK)
+	}
+
 	return opts, nil
 }
 
@@ -229,7 +249,10 @@ Flags:
   --rule string           path to JSON file with system review rules
   --timeout int           concurrent task timeout in minutes (default 10)
   --to string             target ref to end diff at (e.g., 'feature-branch')
-  --tools string          path to JSON tools config file (default: embedded)`)
+  --tools string          path to JSON tools config file (default: embedded)
+  --top-p float           nucleus sampling parameter top_p (0 = use provider default)
+  --top-k int             top-k sampling parameter (0 = use provider default)
+  --temperature float     temperature parameter (0 = use provider default)`)
 }
 
 // --- config subcommand ---
@@ -320,6 +343,6 @@ Examples:
   ocr config set telemetry.enabled true
 
 Supported keys: provider, model, providers.<name>.<field>, custom_providers.<name>.<field>, mcp_servers.<name>.<field>, llm.url, llm.auth_token, llm.auth_header, llm.model, llm.use_anthropic, llm.extra_body, llm.extra_headers, language, telemetry.enabled, telemetry.exporter, telemetry.otlp_endpoint, telemetry.content_logging
-Provider fields: api_key, url, protocol, model, models, auth_header, extra_body, extra_headers
+Provider fields: api_key, url, protocol, model, models, auth_header, top_p, top_k, temperature, extra_body, extra_headers
 MCP server fields: command, args, env, tools, setup`)
 }

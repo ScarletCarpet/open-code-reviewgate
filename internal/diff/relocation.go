@@ -48,6 +48,11 @@ func ReLocateComment(
 		Model:     modelName,
 		Messages:  messages,
 		MaxTokens: maxTokens,
+		// Note: relocation intentionally omits sampling overrides (TopP/TopK/Temperature)
+		// so ApplyDefaults inside CompletionsWithCtx will still apply global
+		// ClientConfig defaults. Callers that want strict exclusion for relocation
+		// should either set these to nil on the ClientConfig before calling, or
+		// add an opt-out mechanism to ChatRequest.
 	})
 	if err != nil {
 		fmt.Fprintf(stdout.Writer(), "[ocr] Re-location LLM call failed for %s: %v\n", cm.Path, err)

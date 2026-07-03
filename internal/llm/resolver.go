@@ -20,6 +20,9 @@ type ResolvedEndpoint struct {
 	Protocol     string            // "anthropic" or "openai"
 	AuthHeader   string            // Anthropic auth header: "x-api-key" or "authorization"
 	Source       string            // human-readable config source label
+	TopP         *float64          // nucleus sampling parameter
+	TopK         *int              // top-k sampling parameter
+	Temperature  *float64          // temperature parameter
 	ExtraBody    map[string]any    // vendor-specific request body fields
 	ExtraHeaders map[string]string // extra HTTP headers for the LLM request
 	// Timeout is the per-request HTTP timeout; 0 means use the client default (5 min).
@@ -193,6 +196,9 @@ type llmFileConfig struct {
 	Model        string            `json:"model,omitempty"`
 	UseAnthropic *bool             `json:"use_anthropic,omitempty"` // pointer to distinguish unset from false
 	TimeoutSec   int               `json:"timeout_sec,omitempty"`   // per-request HTTP timeout in seconds
+	TopP         *float64          `json:"top_p,omitempty"`
+	TopK         *int              `json:"top_k,omitempty"`
+	Temperature  *float64          `json:"temperature,omitempty"`
 	ExtraBody    map[string]any    `json:"extra_body,omitempty"`
 	ExtraHeaders map[string]string `json:"extra_headers,omitempty"`
 }
@@ -206,6 +212,9 @@ type providerEntryConfig struct {
 	Models       []string          `json:"models,omitempty"`
 	AuthHeader   string            `json:"auth_header,omitempty"`
 	TimeoutSec   int               `json:"timeout_sec,omitempty"` // per-request HTTP timeout in seconds
+	TopP         *float64          `json:"top_p,omitempty"`
+	TopK         *int              `json:"top_k,omitempty"`
+	Temperature  *float64          `json:"temperature,omitempty"`
 	ExtraBody    map[string]any    `json:"extra_body,omitempty"`
 	ExtraHeaders map[string]string `json:"extra_headers,omitempty"`
 }
@@ -366,6 +375,9 @@ func tryProviderConfig(cfg configFile, modelOverride string) (ResolvedEndpoint, 
 		Protocol:     protocol,
 		AuthHeader:   authHeader,
 		Source:       "provider:" + cfg.Provider,
+		TopP:         entry.TopP,
+		TopK:         entry.TopK,
+		Temperature:  entry.Temperature,
 		ExtraBody:    extraBody,
 		ExtraHeaders: extraHeaders,
 		Timeout:      timeout,
@@ -409,7 +421,20 @@ func tryLegacyLlmConfig(cfg configFile, modelOverride string) (ResolvedEndpoint,
 		return ResolvedEndpoint{}, false, fmt.Errorf("OCR config file: %w", err)
 	}
 
-	return ResolvedEndpoint{URL: cfg.Llm.URL, Token: cfg.Llm.AuthToken, Model: model, Protocol: protocol, AuthHeader: authHeader, Source: "OCR config file", ExtraBody: cfg.Llm.ExtraBody, ExtraHeaders: cfg.Llm.ExtraHeaders, Timeout: timeout}, true, nil
+	return ResolvedEndpoint{
+		URL:          cfg.Llm.URL,
+		Token:        cfg.Llm.AuthToken,
+		Model:        model,
+		Protocol:     protocol,
+		AuthHeader:   authHeader,
+		Source:       "OCR config file",
+		TopP:         cfg.Llm.TopP,
+		TopK:         cfg.Llm.TopK,
+		Temperature:  cfg.Llm.Temperature,
+		ExtraBody:    cfg.Llm.ExtraBody,
+		ExtraHeaders: cfg.Llm.ExtraHeaders,
+		Timeout:      timeout,
+	}, true, nil
 }
 
 // tryCCEnv reads Claude Code environment variables.

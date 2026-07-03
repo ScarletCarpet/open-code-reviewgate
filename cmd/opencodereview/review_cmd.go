@@ -48,7 +48,7 @@ func runReview(args []string) error {
 		return runPreview(cc, opts)
 	}
 
-	rt, err := loadLLMRuntime(cc.Template, opts.toolConfigPath, opts.model)
+	rt, err := loadLLMRuntime(cc.Template, opts.toolConfigPath, opts.model, cliFloatOrNil(opts.topP), cliIntOrNil(opts.topK), cliFloatOrNil(opts.temperature))
 	if err != nil {
 		return err
 	}
@@ -95,6 +95,9 @@ func runReview(args []string) error {
 		Model:                 rt.Model,
 		Background:            opts.background,
 		GitRunner:             cc.GitRunner,
+		TopP:                  rt.TopP,
+		TopK:                  rt.TopK,
+		Temperature:           rt.Temperature,
 	})
 
 	// Silence progress output during execution; restored before the trace

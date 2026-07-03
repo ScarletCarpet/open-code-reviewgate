@@ -569,3 +569,96 @@ func TestStripThinkTags(t *testing.T) {
 		})
 	}
 }
+
+func TestApplyDefaults(t *testing.T) {
+	t.Run("nil config leaves request unchanged", func(t *testing.T) {
+		req := ChatRequest{Temperature: ptrFloat(0.7)}
+		req.ApplyDefaults(nil)
+		if req.Temperature == nil || *req.Temperature != 0.7 {
+			t.Error("ApplyDefaults(nil) should not clear existing Temperature")
+		}
+	})
+
+	t.Run("fills unset fields from config", func(t *testing.T) {
+		cfg := &ClientConfig{
+			TopP:        ptrFloat(0.9),
+			TopK:        ptrInt(40),
+			Temperature: ptrFloat(0.5),
+		}
+		req := ChatRequest{}
+		req.ApplyDefaults(cfg)
+		if req.TopP == nil || *req.TopP != 0.9 {
+			t.Errorf("ApplyDefaults: TopP = %v, want 0.9", req.TopP)
+		}
+		if req.TopK == nil || *req.TopK != 40 {
+			t.Errorf("ApplyDefaults: TopK = %v, want 40", req.TopK)
+		}
+		if req.Temperature == nil || *req.Temperature != 0.5 {
+			t.Errorf("ApplyDefaults: Temperature = %v, want 0.5", req.Temperature)
+		}
+	})
+
+	t.Run("does not override already-set fields", func(t *testing.T) {
+		cfg := &ClientConfig{Temperature: ptrFloat(1.0)}
+		req := ChatRequest{Temperature: ptrFloat(0.3)}
+		req.ApplyDefaults(cfg)
+		if req.Temperature == nil || *req.Temperature != 0.3 {
+			t.Error("ApplyDefaults should not override existing Temperature")
+		}
+	})
+}
+
+func TestBuildOpenAIParams_LLMParams(t *testing.T) {
+	client := NewOpenAIClient(ClientConfig{URL: "https://api.example.com/v1"})
+
+	req := ChatRequest{
+		Messages:    []Message{{Role: "user", Content: "hello"}},
+		Temperature: ptrFloat(0.7),
+		TopP:        ptrFloat(0.9),
+	}
+
+	params := client.buildOpenAIParams("gpt-4", req)
+
+	if params.Temperature.Value != 0.7 {
+		t.Errorf("Temperature = %v, want 0.7", params.Temperature.Value)
+	}
+	if params.TopP.Value != 0.9 {
+		t.Errorf("TopP = %v, want 0.9", params.TopP.Value)
+	}
+}
+
+func TestBuildAnthropicParams_LLMParams(t *testing.T) {
+	client := NewAnthropicClient(ClientConfig{URL: "https://api.anthropic.com"})
+
+	req := ChatRequest{
+		Messages:    []Message{{Role: "user", Content: "hello"}},
+		Temperature: ptrFloat(0.5),
+		TopP:        ptrFloat(0.8),
+		TopK:        ptrInt(40),
+	}
+
+	params, err := client.buildAnthropicParams("claude-sonnet-4-20250514", req)
+	if err != nil {
+		t.Fatalf("buildAnthropicParams: %v", err)
+	}
+
+	if params.Temperature.Value != 0.5 {
+		t.Errorf("Temperature = %v, want 0.5", params.Temperature.Value)
+	}
+	if params.TopP.Value != 0.8 {
+		t.Errorf("TopP = %v, want 0.8", params.TopP.Value)
+	}
+	if params.TopK.Value != 40 {
+		t.Errorf("TopK = %v, want 40", params.TopK.Value)
+	}
+}
+
+// ptrFloat returns a *float64 for the given value.
+func ptrFloat(v float64) *float64 {
+	return &v
+}
+
+// ptrInt returns a *int for the given value.
+func ptrInt(v int) *int {
+	return &v
+}

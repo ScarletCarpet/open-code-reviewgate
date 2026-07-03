@@ -207,9 +207,12 @@ func (r *Runner) runCompression(ctx context.Context, msgs []llm.Message, filePat
 
 	startTime := time.Now()
 	resp, err := r.deps.LLMClient.CompletionsWithCtx(ctx, llm.ChatRequest{
-		Model:     r.deps.Model,
-		Messages:  compressionMsgs,
-		MaxTokens: r.deps.Template.MaxTokens,
+		Model:       r.deps.Model,
+		Messages:    compressionMsgs,
+		MaxTokens:   r.deps.Template.MaxTokens,
+		Temperature: r.deps.Temperature,
+		TopP:        r.deps.TopP,
+		TopK:        r.deps.TopK,
 	})
 	duration := time.Since(startTime)
 

@@ -67,6 +67,10 @@ type Args struct {
 	// batches are dispatched. 0 = unlimited. Set via --max-tokens-budget
 	// or ScanTemplate.MaxTokensBudget.
 	MaxTokensBudget int64
+	// CLI-level overrides for LLM sampling parameters (nil = use provider config).
+	TopP        *float64
+	TopK        *int
+	Temperature *float64
 }
 
 // planEnabled / dedupEnabled / summaryEnabled report whether each optional
@@ -129,6 +133,9 @@ func NewAgent(args Args) *Agent {
 		CommentCollector:  args.CommentCollector,
 		CommentWorkerPool: args.CommentWorkerPool,
 		Session:           args.Session,
+		TopP:              args.TopP,
+		TopK:              args.TopK,
+		Temperature:       args.Temperature,
 		// DiffLookup returns a synthetic Diff so the code_comment tool's
 		// line-number resolver (resolveFromFileContent) can match against
 		// the full file content of the scanned file.
@@ -586,9 +593,12 @@ func (a *Agent) maybeRunPlan(ctx context.Context, it model.ScanItem, rule string
 	startTime := time.Now()
 
 	resp, err := a.args.LLMClient.CompletionsWithCtx(ctx, llm.ChatRequest{
-		Model:     a.args.Model,
-		Messages:  messages,
-		MaxTokens: a.args.Template.MaxTokens,
+		Model:       a.args.Model,
+		Messages:    messages,
+		MaxTokens:   a.args.Template.MaxTokens,
+		Temperature: a.args.Temperature,
+		TopP:        a.args.TopP,
+		TopK:        a.args.TopK,
 	})
 	if err != nil {
 		rec.SetError(err, time.Since(startTime))
@@ -639,9 +649,12 @@ func (a *Agent) maybeRunProjectSummary(ctx context.Context, comments []model.Llm
 	startTime := time.Now()
 
 	resp, err := a.args.LLMClient.CompletionsWithCtx(ctx, llm.ChatRequest{
-		Model:     a.args.Model,
-		Messages:  messages,
-		MaxTokens: a.args.Template.MaxTokens,
+		Model:       a.args.Model,
+		Messages:    messages,
+		MaxTokens:   a.args.Template.MaxTokens,
+		Temperature: a.args.Temperature,
+		TopP:        a.args.TopP,
+		TopK:        a.args.TopK,
 	})
 	if err != nil {
 		rec.SetError(err, time.Since(startTime))
@@ -714,9 +727,12 @@ func (a *Agent) maybeRunDedup(ctx context.Context, batchIdx, batchStart int) {
 	startTime := time.Now()
 
 	resp, err := a.args.LLMClient.CompletionsWithCtx(ctx, llm.ChatRequest{
-		Model:     a.args.Model,
-		Messages:  messages,
-		MaxTokens: a.args.Template.MaxTokens,
+		Model:       a.args.Model,
+		Messages:    messages,
+		MaxTokens:   a.args.Template.MaxTokens,
+		Temperature: a.args.Temperature,
+		TopP:        a.args.TopP,
+		TopK:        a.args.TopK,
 	})
 	if err != nil {
 		rec.SetError(err, time.Since(startTime))

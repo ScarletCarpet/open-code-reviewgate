@@ -30,6 +30,10 @@ type Deps struct {
 	CommentCollector  *tool.CommentCollector
 	CommentWorkerPool *CommentWorkerPool
 	Session           *session.SessionHistory
+	// CLI-level overrides for LLM sampling parameters (nil = use provider config).
+	TopP        *float64
+	TopK        *int
+	Temperature *float64
 	// DiffLookup is consulted by the code_comment tool path to resolve
 	// line numbers against the file's diff (or against full file content
 	// in scan mode — scan adapters return a synthetic Diff whose
@@ -164,10 +168,13 @@ func (r *Runner) RunPerFile(ctx context.Context, messages []llm.Message, newPath
 		startTime := time.Now()
 
 		resp, err := r.deps.LLMClient.CompletionsWithCtx(ctx, llm.ChatRequest{
-			Model:     r.deps.Model,
-			Messages:  messages,
-			Tools:     r.deps.MainToolDefs,
-			MaxTokens: r.deps.Template.MaxTokens,
+			Model:       r.deps.Model,
+			Messages:    messages,
+			Tools:       r.deps.MainToolDefs,
+			MaxTokens:   r.deps.Template.MaxTokens,
+			Temperature: r.deps.Temperature,
+			TopP:        r.deps.TopP,
+			TopK:        r.deps.TopK,
 		})
 		duration := time.Since(startTime)
 		if err != nil {

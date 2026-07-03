@@ -111,6 +111,11 @@ type Args struct {
 	// Session is an optional session history instance for collecting conversation records.
 	// When nil, a default one is created automatically with git branch auto-detected from repoDir.
 	Session *session.SessionHistory
+
+	// CLI-level overrides for LLM sampling parameters (nil = use provider config).
+	TopP        *float64
+	TopK        *int
+	Temperature *float64
 }
 
 // Agent orchestrates the AI-powered code review. LLM tool-use loop / memory
@@ -164,6 +169,9 @@ func New(args Args) *Agent {
 		CommentCollector:  args.CommentCollector,
 		CommentWorkerPool: args.CommentWorkerPool,
 		Session:           args.Session,
+		TopP:              args.TopP,
+		TopK:              args.TopK,
+		Temperature:       args.Temperature,
 		DiffLookup:        a.findDiff,
 	})
 	return a
@@ -535,9 +543,12 @@ func (a *Agent) executeReviewFilter(ctx context.Context, d model.Diff, newPath s
 	startTime := time.Now()
 
 	resp, err := a.args.LLMClient.CompletionsWithCtx(ctx, llm.ChatRequest{
-		Model:     a.args.Model,
-		Messages:  messages,
-		MaxTokens: a.args.Template.MaxTokens,
+		Model:       a.args.Model,
+		Messages:    messages,
+		MaxTokens:   a.args.Template.MaxTokens,
+		Temperature: a.args.Temperature,
+		TopP:        a.args.TopP,
+		TopK:        a.args.TopK,
 	})
 	if err != nil {
 		rec.SetError(err, time.Since(startTime))
@@ -741,9 +752,12 @@ func (a *Agent) executePlanPhase(ctx context.Context, newPath, rawDiff, changeFi
 	startTime := time.Now()
 
 	resp, err := a.args.LLMClient.CompletionsWithCtx(ctx, llm.ChatRequest{
-		Model:     a.args.Model,
-		Messages:  messages,
-		MaxTokens: a.args.Template.MaxTokens,
+		Model:       a.args.Model,
+		Messages:    messages,
+		MaxTokens:   a.args.Template.MaxTokens,
+		Temperature: a.args.Temperature,
+		TopP:        a.args.TopP,
+		TopK:        a.args.TopK,
 	})
 	if err != nil {
 		rec.SetError(err, time.Since(startTime))

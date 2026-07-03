@@ -192,3 +192,88 @@ func TestExpandShortFlags(t *testing.T) {
 		})
 	}
 }
+
+func TestParseReviewFlags_LLMParams(t *testing.T) {
+	opts, err := parseReviewFlags([]string{"--top-p", "0.9", "--top-k", "50", "--temperature", "0.3"})
+	if err != nil {
+		t.Fatalf("parseReviewFlags: %v", err)
+	}
+	if opts.topP != 0.9 {
+		t.Errorf("topP = %v, want 0.9", opts.topP)
+	}
+	if opts.topK != 50 {
+		t.Errorf("topK = %d, want 50", opts.topK)
+	}
+	if opts.temperature != 0.3 {
+		t.Errorf("temperature = %v, want 0.3", opts.temperature)
+	}
+}
+
+func TestParseScanFlags_LLMParams(t *testing.T) {
+	opts, err := parseScanFlags([]string{"--top-p", "0.8", "--temperature", "0.5"})
+	if err != nil {
+		t.Fatalf("parseScanFlags: %v", err)
+	}
+	if opts.topP != 0.8 {
+		t.Errorf("topP = %v, want 0.8", opts.topP)
+	}
+	if opts.temperature != 0.5 {
+		t.Errorf("temperature = %v, want 0.5", opts.temperature)
+	}
+}
+
+func TestParseReviewFlags_LLMParamsExplicitZero(t *testing.T) {
+	// temperature=0 and top_k=0 are valid (greedy/deterministic decoding).
+	opts, err := parseReviewFlags([]string{"--temperature", "0", "--top-k", "0"})
+	if err != nil {
+		t.Fatalf("parseReviewFlags: %v", err)
+	}
+	if opts.temperature != 0 {
+		t.Errorf("temperature = %v, want 0 (greedy)", opts.temperature)
+	}
+	if opts.topK != 0 {
+		t.Errorf("topK = %d, want 0", opts.topK)
+	}
+}
+
+func TestParseReviewFlags_LLMParamsDefaults(t *testing.T) {
+	opts, err := parseReviewFlags(nil)
+	if err != nil {
+		t.Fatalf("parseReviewFlags: %v", err)
+	}
+	if opts.topP != -1 {
+		t.Errorf("topP default = %v, want -1 (use provider default)", opts.topP)
+	}
+	if opts.topK != -1 {
+		t.Errorf("topK default = %d, want -1 (use provider default)", opts.topK)
+	}
+	if opts.temperature != -1 {
+		t.Errorf("temperature default = %v, want -1 (use provider default)", opts.temperature)
+	}
+}
+
+func TestCliFloatOrNil(t *testing.T) {
+	// -1 is sentinel for "not set" (flag default), 0 is a valid explicit value.
+	if v := cliFloatOrNil(-1); v != nil {
+		t.Errorf("cliFloatOrNil(-1) = %v, want nil", v)
+	}
+	if v := cliFloatOrNil(0); v == nil || *v != 0 {
+		t.Errorf("cliFloatOrNil(0) = %v, want 0", v)
+	}
+	if v := cliFloatOrNil(0.5); v == nil || *v != 0.5 {
+		t.Errorf("cliFloatOrNil(0.5) = %v, want 0.5", v)
+	}
+}
+
+func TestCliIntOrNil(t *testing.T) {
+	// -1 is sentinel for "not set" (flag default), 0 is a valid explicit value.
+	if v := cliIntOrNil(-1); v != nil {
+		t.Errorf("cliIntOrNil(-1) = %v, want nil", v)
+	}
+	if v := cliIntOrNil(0); v == nil || *v != 0 {
+		t.Errorf("cliIntOrNil(0) = %v, want 0", v)
+	}
+	if v := cliIntOrNil(42); v == nil || *v != 42 {
+		t.Errorf("cliIntOrNil(42) = %v, want 42", v)
+	}
+}

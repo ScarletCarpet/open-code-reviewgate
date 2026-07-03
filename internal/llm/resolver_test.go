@@ -1446,3 +1446,76 @@ func TestResolveEndpoint_NegativeEnvTimeoutWithConfig(t *testing.T) {
 		t.Errorf("error %q should mention OCR_LLM_TIMEOUT", err.Error())
 	}
 }
+
+func TestResolveEndpoint_ProviderLLMParams(t *testing.T) {
+	clearAllEnv(t)
+
+	topP := 0.9
+	topK := 50
+	temp := 0.3
+
+	cfg := configFile{
+		Provider: "anthropic",
+		Providers: map[string]providerEntryConfig{
+			"anthropic": {
+				APIKey:      "sk-ant-test",
+				Model:       "claude-sonnet-4-6",
+				TopP:        &topP,
+				TopK:        &topK,
+				Temperature: &temp,
+			},
+		},
+	}
+	data, _ := json.Marshal(cfg)
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	os.WriteFile(cfgPath, data, 0644)
+
+	ep, err := ResolveEndpoint(cfgPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ep.TopP == nil || *ep.TopP != 0.9 {
+		t.Errorf("TopP = %v, want 0.9", ep.TopP)
+	}
+	if ep.TopK == nil || *ep.TopK != 50 {
+		t.Errorf("TopK = %v, want 50", ep.TopK)
+	}
+	if ep.Temperature == nil || *ep.Temperature != 0.3 {
+		t.Errorf("Temperature = %v, want 0.3", ep.Temperature)
+	}
+}
+
+func TestResolveEndpoint_CustomProviderLLMParams(t *testing.T) {
+	clearAllEnv(t)
+
+	topP := 0.95
+	temp := 0.7
+
+	cfg := configFile{
+		Provider: "my-gateway",
+		CustomProviders: map[string]providerEntryConfig{
+			"my-gateway": {
+				URL:         "https://my-gateway.example.com/v1",
+				Protocol:    "openai",
+				APIKey:      "test-key",
+				Model:       "gpt-4",
+				TopP:        &topP,
+				Temperature: &temp,
+			},
+		},
+	}
+	data, _ := json.Marshal(cfg)
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	os.WriteFile(cfgPath, data, 0644)
+
+	ep, err := ResolveEndpoint(cfgPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ep.TopP == nil || *ep.TopP != 0.95 {
+		t.Errorf("TopP = %v, want 0.95", ep.TopP)
+	}
+	if ep.Temperature == nil || *ep.Temperature != 0.7 {
+		t.Errorf("Temperature = %v, want 0.7", ep.Temperature)
+	}
+}

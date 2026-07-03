@@ -211,6 +211,9 @@ Optional settings:
 | Key | Description |
 |-----|-------------|
 | `providers.<name>.auth_header` | Auth header: `x-api-key` or `authorization` (default: `authorization`) |
+| `providers.<name>.top_p` | Nucleus sampling parameter (0.0–1.0) |
+| `providers.<name>.top_k` | Top-K sampling parameter (non-negative integer) |
+| `providers.<name>.temperature` | Temperature parameter (0.0–2.0) |
 | `providers.<name>.extra_body` | Custom JSON fields merged into the request body |
 | `providers.<name>.extra_headers` | Comma-separated `key=value` pairs of custom HTTP headers added to every request |
 | `providers.<name>.models` | Model list for interactive selection |
@@ -440,6 +443,9 @@ See the [`examples/`](./examples/) directory for integration examples:
 | `--audience` | — | `human` | `human` (show progress) or `agent` (summary only) |
 | `--background` | `-b` | — | Optional requirement/business context for the review; auto-filled from commit message when using `--commit` |
 | `--model` | — | — | Select or override the LLM model for this review |
+| `--top-p` | — | 0 | Nucleus sampling parameter top_p (0 = use provider config default) |
+| `--top-k` | — | 0 | Top-K sampling parameter (0 = use provider config default) |
+| `--temperature` | — | 0 | Temperature parameter (0 = use provider config default) |
 | `--rule` | — | — | Path to custom JSON review rules |
 | `--max-tools` | — | built-in | Max tool call rounds per file; only takes effect when greater than template default |
 | `--max-git-procs` | — | built-in | Max concurrent git subprocesses |
@@ -464,6 +470,9 @@ non-git directories too (it falls back to a filesystem walk that honors `.gitign
 | `--format` | `-f` | `text` | Output format: `text` or `json` (JSON includes a `project_summary` field) |
 | `--concurrency` | — | `8` | Max concurrent file scans |
 | `--rule` | — | — | Path to custom JSON review rules |
+| `--top-p` | — | 0 | Nucleus sampling parameter top_p (0 = use provider config default) |
+| `--top-k` | — | 0 | Top-K sampling parameter (0 = use provider config default) |
+| `--temperature` | — | 0 | Temperature parameter (0 = use provider config default) |
 | `--repo` | — | current dir | Repository or directory root to scan |
 
 Before each run, `ocr scan` prints a rough token-cost estimate. Use `--preview` to see the
@@ -496,6 +505,10 @@ ocr review --commit abc123 --format json --audience agent
 # Select or override model for this review
 ocr review --model claude-opus-4-6
 ocr review --commit abc123 --model claude-sonnet-4-6
+
+# Adjust LLM sampling parameters
+ocr review --top-p 0.9 --temperature 0.3
+ocr scan  --top-p 0.95 --top-k 50 --temperature 0.5
 
 # Provide requirement context for more targeted review
 ocr review --background "Adding rate limiting to the login API"
@@ -667,6 +680,9 @@ Config file: `~/.opencodereview/config.json`
 | `providers.<name>.model` | string | Model name for the provider |
 | `providers.<name>.models` | array | Optional provider model list for interactive selection |
 | `providers.<name>.auth_header` | string | `x-api-key` \| `authorization` |
+| `providers.<name>.top_p` | float | Nucleus sampling parameter (0.0–1.0) |
+| `providers.<name>.top_k` | integer | Top-K sampling parameter (non-negative) |
+| `providers.<name>.temperature` | float | Temperature parameter (0.0–2.0) |
 | `providers.<name>.extra_body` | object | JSON object merged into every request body |
 | `providers.<name>.timeout_sec` | integer | Per-request HTTP timeout in seconds (default: `300`) |
 | `providers.<name>.extra_headers` | string | Comma-separated `key=value` HTTP headers |

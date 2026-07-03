@@ -916,11 +916,30 @@ func cloneProviderEntry(v ProviderEntry) ProviderEntry {
 		Models:     append([]string(nil), v.Models...),
 		AuthHeader: v.AuthHeader,
 	}
+	// Deep-copy pointer fields to prevent aliasing.
+	if v.TopP != nil {
+		v2 := *v.TopP
+		out.TopP = &v2
+	}
+	if v.TopK != nil {
+		v2 := *v.TopK
+		out.TopK = &v2
+	}
+	if v.Temperature != nil {
+		v2 := *v.Temperature
+		out.Temperature = &v2
+	}
 	if v.ExtraBody != nil {
 		out.ExtraBody = make(map[string]any, len(v.ExtraBody))
 		for k, val := range v.ExtraBody {
 			// Shallow copy only: nested maps/slices inside val are not cloned.
 			out.ExtraBody[k] = val
+		}
+	}
+	if v.ExtraHeaders != nil {
+		out.ExtraHeaders = make(map[string]string, len(v.ExtraHeaders))
+		for k, val := range v.ExtraHeaders {
+			out.ExtraHeaders[k] = val
 		}
 	}
 	return out
