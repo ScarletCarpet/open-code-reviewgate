@@ -157,7 +157,7 @@ func resolveLang(lang string) string {
 }
 
 // ApplyLanguage injects a language directive into all system-role messages
-// across MAIN_TASK, PLAN_TASK (if set), and MEMORY_COMPRESSION_TASK.
+// across MAIN_TASK, PLAN_TASK (if set), MEMORY_COMPRESSION_TASK, and REVIEW_FILTER_TASK (if set).
 func (t *Template) ApplyLanguage(lang string) {
 	instruction := "\n\nAlways respond in " + resolveLang(lang) + "."
 	applyLanguage(&t.MainTask, instruction)
@@ -165,6 +165,9 @@ func (t *Template) ApplyLanguage(lang string) {
 		applyLanguage(t.PlanTask, instruction)
 	}
 	applyLanguage(&t.MemoryCompressionTask, instruction)
+	if t.ReviewFilterTask != nil {
+		applyLanguage(t.ReviewFilterTask, instruction)
+	}
 }
 
 // ApplyLanguage injects a language directive into all system-role messages

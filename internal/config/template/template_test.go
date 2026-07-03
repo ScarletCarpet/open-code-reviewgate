@@ -146,6 +146,12 @@ func TestApplyLanguage(t *testing.T) {
 	if !strings.HasSuffix(tpl.MemoryCompressionTask.Messages[0].Content, suffix) {
 		t.Errorf("MemoryCompressionTask system message does not end with %q", suffix)
 	}
+	if tpl.ReviewFilterTask == nil {
+		t.Fatal("ReviewFilterTask should be present in default template")
+	}
+	if !strings.HasSuffix(tpl.ReviewFilterTask.Messages[0].Content, suffix) {
+		t.Errorf("ReviewFilterTask system message does not end with %q", suffix)
+	}
 }
 
 func TestApplyLanguage_DefaultEnglish(t *testing.T) {
@@ -316,6 +322,18 @@ func TestApplyLanguage_SkipsNonSystemMessages(t *testing.T) {
 	tpl.ApplyLanguage("French")
 	if strings.Contains(tpl.MainTask.Messages[1].Content, "French") {
 		t.Error("user-role message should not get language directive")
+	}
+}
+
+func TestApplyLanguage_NilReviewFilterTask(t *testing.T) {
+	// ApplyLanguage should not panic when ReviewFilterTask is nil.
+	tpl := &Template{
+		MainTask:              LlmConversation{Messages: []ChatMessage{{Role: "system", Content: "sys"}}},
+		MemoryCompressionTask: LlmConversation{Messages: []ChatMessage{{Role: "system", Content: "compress"}}},
+	}
+	tpl.ApplyLanguage("German")
+	if !strings.Contains(tpl.MainTask.Messages[0].Content, "German") {
+		t.Error("MainTask should contain language directive")
 	}
 }
 
